@@ -14,6 +14,6 @@ The video test additionally checked all 307,200 pixels in the sample frame for u
 
 ![ModelSim-rendered sample frame](modelsim_sample_screen.png)
 
-Reproduce from the repository root with `./scripts/simulate_modelsim.ps1`, overriding `-ModelSimBin` if needed. ModelSim needs a working license. The generated logs and PPM image go into `build/modelsim/`.
+This checkpoint predates the EE354 skeleton renames (`display_controller.v`, `vga_bitchange.v`, `royale_params.vh`). Reproduce from the repository root with `./scripts/simulate_questasim.ps1` (override `-QuestaBin` if needed; requires a license) or `bash scripts/simulate_icarus.sh`. Logs and the PPM image go into `build/questasim/` or `build/icarus/`.
 
 Synthesis, implementation timing, bitstream generation, and physical-board behavior are not covered by these simulation results.

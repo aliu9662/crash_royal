@@ -2,7 +2,10 @@ set project_root [file normalize [file join [file dirname [info script]] ..]]
 set out [file join $project_root build]
 file mkdir $out
 set_param general.maxThreads 4
-foreach source [glob [file join $project_root rtl *.v]] {
+foreach source [glob -nocomplain [file join $project_root rtl *.v]] {
+    read_verilog -include_dirs [list [file join $project_root rtl]] $source
+}
+foreach source [glob -nocomplain [file join $project_root rtl sprites *.v]] {
     read_verilog -include_dirs [list [file join $project_root rtl]] $source
 }
 read_xdc [file join $project_root constraints nexys_a7_100t.xdc]

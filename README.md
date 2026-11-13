@@ -1,6 +1,6 @@
 # FPGA Royale
 
-First playable hardware prototype for the Nexys A7-100T (`xc7a100tcsg324-1`), written in Verilog-2001. RTL and testbenches use `.v` files, `wire`/`reg`, ordinary `always` blocks, and explicit port connections. Shared constants/functions are included from `rtl/royale_defs.vh`.
+First playable hardware prototype for the Nexys A7-100T (`xc7a100tcsg324-1`), written in Verilog-2001. RTL and testbenches use `.v` files, `wire`/`reg`, ordinary `always` blocks, and explicit port connections. Shared constants/functions are included from `rtl/royale_params.vh`.
 
 ## Repository contents
 
@@ -16,9 +16,9 @@ Build outputs, installed/downloaded simulator binaries, and cached browser pages
 
 ## Current checkpoint
 
-The implementation and testbenches are now Verilog-2001. ModelSim compiled all sources using `-vlog01compat` with zero compilation errors or warnings, then passed 50 gameplay checks, 10 input checks, and 8 video checks. The video test checked a complete 800x525 raster, a 640x480 visible area, sync timing, one game tick per frame, blanking, and 307,200 rendered pixels. Its sample screen is written to `build/modelsim/sample_screen.ppm`; a portable preview and results summary are saved in [docs/verification](docs/verification/simulation_results.md).
+The implementation and testbenches are now Verilog-2001. QuestaSim (`scripts/simulate_questasim.ps1`, `-vlog01compat`) and Icarus (`scripts/simulate_icarus.sh` / `simulate_icarus.ps1`, `-g2001`) compile all RTL plus `sim/*_tb.v`, then run gameplay, input, and video checks (50/10/8 assertions in the respective testbenches). The video test checks a complete 800x525 raster, 640x480 visible area, sync timing, one game tick per frame, blanking, and 307,200 rendered pixels; it writes `sample_screen.ppm` in `build/questasim` or `build/icarus`. A portable preview and results summary are in [docs/verification](docs/verification/simulation_results.md).
 
-The ModelSim license is working. Vivado synthesis, timing, bitstream generation, and physical-board testing remain unverified; they were not rerun during this simulation task. Troop balance and physical controls still need board testing.
+Vivado synthesis, timing, bitstream generation, and physical-board testing remain unverified for this checkpoint. Troop balance and physical controls still need board testing.
 
 ## Agreed rules
 
@@ -53,7 +53,7 @@ Card codes: `00` Giant, `01` Ice Golem, `10` Knight, `11` Mini P.E.K.K.A. Lane c
 
 ## Initial balance values
 
-These are adjustable starting values, not final balance. Stats are centralized in `rtl/royale_defs.vh`.
+These are adjustable starting values, not final balance. Stats are centralized in `rtl/royale_params.vh`.
 
 | Card | Cost | HP | Damage | Move every | Attack every |
 | --- | --- | --- | --- | --- | --- |
@@ -72,24 +72,53 @@ All logic uses the board's 100 MHz clock. A pixel enable every four cycles gener
 
 - `game_core.v`: idle/play/game-over controller, ten unit slots, combat, elixir, deployment, scoring.
 - `input_filter.v`, `command_capture.v`: synchronizers, stable-input filtering, independent request snapshots.
-- `vga_timing.v`, `arena_renderer.v`: VGA raster and simple prototype graphics.
+- `display_controller.v`: 640×480 VGA timing (100 MHz, 1-of-4 pixel enable), `bright`/`hSync`/`vSync`/`hCount`/`vCount`, one `game_tick` per frame.
+- `vga_bitchange.v`: arena paint, unit letters, HUD (`localparam USE_SPRITES` sprite hook).
 - `seven_segment.v`, `royale_top.v`: board display and integration.
-- `constraints/nexys_a7_100t.xdc`: board pin assignments derived from the official [Digilent master constraints](https://github.com/Digilent/digilent-xdc/blob/master/Nexys-A7-100T-Master.xdc).
+- `constraints/nexys_a7_100t.xdc`: board pin assignments (EE354 port names on `royale_top`), derived from the official [Digilent master constraints](https://github.com/Digilent/digilent-xdc/blob/master/Nexys-A7-100T-Master.xdc).
 
-## Build and simulation
+`royale_top` ports match the XDC: `ClkPort`, active-low `BtnCpuReset`, `BtnC` (start), `Sw[15:0]`, `Ld[15:0]`, `vgaR`/`vgaG`/`vgaB[3:0]`, `hSync`, `vSync`, `An0`–`An7`, `Ca`–`Cg`, `Dp`, and `QuadSpiFlashCS` (tied high in RTL).
 
-With ModelSim or Vivado installed (the scripts have defaults for this computer; override their tool-path parameters on another computer):
+## Simulation
+
+macOS / Linux (Icarus):
+
+```bash
+bash scripts/simulate_icarus.sh
+```
+
+Windows (Icarus; optional portable tree under `build/tools`, or `-IcarusBin`):
 
 ```powershell
-.\scripts\simulate_modelsim.ps1
-# Alternatively, use the Vivado simulator:
-.\scripts\simulate.ps1
-# Synthesis and bitstream generation:
+.\scripts\simulate_icarus.ps1
+```
+
+QuestaSim (`-QuestaBin` if `vsim.exe` is not on PATH):
+
+```powershell
+.\scripts\simulate_questasim.ps1
+```
+
+Each script builds `rtl/*.v`, `rtl/sprites/*.v` when present, and `sim/game_core_tb.v`, `sim/input_tb.v`, `sim/video_tb.v`, then requires a `PASS <test>:` line in each log. Each player has one queued request snapshot; if multiple filtered deployment toggles arrive before one game tick, the latest request replaces the earlier pending request.
+
+## Vivado build and program
+
+```powershell
 .\scripts\build.ps1
 ```
 
-ModelSim compiles with `-vlog01compat` to check Verilog-2001 compatibility; Vivado uses its Verilog compiler without SystemVerilog mode. The optional Icarus script uses `-g2001`. A portable Icarus package from the official MSYS2 repository was extracted under the ignored `build/tools` directory for this checkpoint; it did not change the system installation or permanent PATH. The Icarus script detects it automatically. It also works with an existing Icarus installation supplied through its `-IcarusBin` option. Each player has one queued request snapshot; if multiple filtered deployment toggles arrive before one game tick, the latest request replaces the earlier pending request.
+Batch-runs `scripts/build.tcl`: synthesis through `write_bitstream`, timing/DRC gates, output `build/royale_top.bit` and reports under `build/`. Override tool location with `-VivadoBin` if needed.
 
-Simulation runs directed gameplay/input/raster checks and generates a sample screen. The build script synthesizes, places, routes, checks timing, and writes `build/royale_top.bit` plus reports. A failing timing/DRC check fails the build. Neither script programs a board. Load the bitstream through Vivado Hardware Manager when ready to test the physical board.
+```powershell
+.\scripts\program.ps1
+```
 
-The VGA archive in `instructions/` was reviewed as a reference; this implementation uses a single clock and explicit resets rather than the archive's cascaded clock dividers. Simple colored units intentionally precede sprite artwork. Hardware operation and gameplay balance still require a physical-board playtest.
+Batch-runs `scripts/program.tcl`: Hardware Manager connects to the first target and programs `build/royale_top.bit` into SRAM (lost on power cycle).
+
+For persistent configuration flash, `QuadSpiFlashCS` is held high so gameplay does not drive the quad-SPI device. Store a bitstream in on-board configuration memory separately in Vivado Hardware Manager (*Add Configuration Memory Device*, then program with a `.bin` or `.mcs` from the implemented design—not automated by these scripts).
+
+## Sprite handoff
+
+Default graphics use colored boxes and card letters (`USE_SPRITES = 0` in `vga_bitchange.v`). For EE354 block-RAM ROMs, see `rtl/sprites/README.md`. Convert art with `tools/ee354_optimized_sprite_script.py`: edit the driver to call `generate("giant.png")` or `generate("name.png", rem_x, rem_y)` to mask a background pixel. The script writes `<basename>_12_bit_rom.v` (`module <basename>_rom`); place copies in `rtl/sprites/` (e.g. `giant_rom.v`). Recommended size is 20×20. Set `USE_SPRITES = 1` and instantiate ROMs at the `// SPRITE HOOK`; treat `12'h000` as transparent.
+
+The VGA archive in `instructions/` was reviewed as a reference; this implementation uses a single clock and explicit resets rather than the archive's cascaded clock dividers. Hardware operation and gameplay balance still require a physical-board playtest.

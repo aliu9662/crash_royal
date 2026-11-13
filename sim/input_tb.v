@@ -1,5 +1,6 @@
 `timescale 1ns/1ps
 module input_tb;
+    `include "royale_params.vh"
     reg clk = 0;
     always #5 clk = !clk;
     reg reset = 1, enabled = 0, consume = 0;
@@ -38,6 +39,9 @@ module input_tb;
         check(request_lane[(0)*3 +: 3] == 4 && request_card[(0)*2 +: 2] == 3,"request retains selection snapshot");
         consume = 1; cycles(1); consume = 0; cycles(2);
         check(pending == 0,"held toggle cannot repeat deployment");
+        lane[(0)*3 +: 3] = 2; card[(0)*2 +: 2] = ICE_GOLEM; toggle[0] = 0; cycles(1);
+        toggle[0] = 1; cycles(1);
+        check(pending == 1 && request_lane[(0)*3 +: 3] == 2 && request_card[(0)*2 +: 2] == ICE_GOLEM,"rising toggle captures a request");
         toggle = ~toggle; cycles(1);
         check(pending == 3,"both independent controllers capture together");
         consume = 1; toggle[0] = ~toggle[0]; lane[(0)*3 +: 3] = 2; cycles(1); consume = 0;

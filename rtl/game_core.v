@@ -15,7 +15,7 @@ module game_core #(
     output reg [7:0] elixir,
     output reg [3:0] error_code
 );
-    `include "royale_defs.vh"
+    `include "royale_params.vh"
     reg [59:0] move_left, attack_left;
     reg [31:0] match_age, elixir_age;
     reg [1:0] state_n, winner_n;

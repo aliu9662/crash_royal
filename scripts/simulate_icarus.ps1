@@ -12,6 +12,10 @@ $simDirectory = Join-Path $projectRoot 'build/icarus'
 New-Item -ItemType Directory -Force $simDirectory | Out-Null
 $rtlDirectory = Join-Path $projectRoot 'rtl'
 $sources = @(Get-ChildItem $rtlDirectory -Filter '*.v' | ForEach-Object FullName)
+$spriteDir = Join-Path $rtlDirectory 'sprites'
+if (Test-Path $spriteDir) {
+    $sources += Get-ChildItem $spriteDir -Filter '*.v' -ErrorAction SilentlyContinue | ForEach-Object FullName
+}
 $sources += Get-ChildItem (Join-Path $projectRoot 'sim') -Filter '*_tb.v' | ForEach-Object FullName
 Push-Location $simDirectory
 try {

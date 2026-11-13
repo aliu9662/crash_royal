@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 module game_core_tb;
-    `include "royale_defs.vh"
+    `include "royale_params.vh"
     reg clk = 0;
     always #5 clk = !clk;
     reg reset = 1, game_tick = 0, start = 0;
@@ -76,7 +76,9 @@ module game_core_tb;
         check(error_code[(0)*2 +: 2] == NO_ELIXIR && !alive[1] && elixir[(0)*4 +: 4] == 2,"insufficient elixir rejects");
 
         new_match();
-        repeat (60) tick();
+        repeat (59) tick();
+        check(elixir[(0)*4 +: 4] == 5 && elixir[(1)*4 +: 4] == 5,"elixir waits until the sixtieth tick");
+        tick();
         check(elixir[(0)*4 +: 4] == 6 && elixir[(1)*4 +: 4] == 6,"elixir grows without player input");
         repeat (300) tick();
         check(elixir[(0)*4 +: 4] == 10 && elixir[(1)*4 +: 4] == 10,"elixir caps at ten");

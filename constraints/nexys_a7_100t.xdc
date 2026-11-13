@@ -1,40 +1,81 @@
-# Pin assignments verified against Digilent's Nexys-A7-100T-Master.xdc:
-# https://github.com/Digilent/digilent-xdc/blob/master/Nexys-A7-100T-Master.xdc
-set_property -dict {PACKAGE_PIN E3 IOSTANDARD LVCMOS33} [get_ports CLK100MHZ]
-create_clock -add -name sys_clk -period 10.000 [get_ports CLK100MHZ]
-set_property -dict {PACKAGE_PIN C12 IOSTANDARD LVCMOS33} [get_ports CPU_RESETN]
-set_property -dict {PACKAGE_PIN N17 IOSTANDARD LVCMOS33} [get_ports BTNC]
-set sw_pins {J15 L16 M13 R15 R17 T18 U18 R13 T8 U8 R16 T13 H6 U12 U11 V10}
-set led_pins {H17 K15 J13 N14 R18 V17 U17 U16 V16 T15 U14 T16 V15 V14 V12 V11}
-for {set i 0} {$i < 16} {incr i} {
-    set sw [get_ports [format {SW[%d]} $i]]
-    set_property PACKAGE_PIN [lindex $sw_pins $i] $sw
-    # Switches 8 and 9 are on the board's 1.8 V bank.
-    set_property IOSTANDARD [expr {$i == 8 || $i == 9 ? "LVCMOS18" : "LVCMOS33"}] $sw
-    set led [get_ports [format {LED[%d]} $i]]
-    set_property PACKAGE_PIN [lindex $led_pins $i] $led
-    set_property IOSTANDARD LVCMOS33 $led
-}
-set an_pins {J17 J18 T9 J14 P14 T14 K2 U13}
-for {set i 0} {$i < 8} {incr i} {
-    set p [get_ports [format {AN[%d]} $i]]
-    set_property PACKAGE_PIN [lindex $an_pins $i] $p
-    set_property IOSTANDARD LVCMOS33 $p
-}
-foreach port {CA CB CC CD CE CF CG DP VGA_HS VGA_VS} pin {T10 R10 K16 K13 P15 T11 L18 H15 B11 B12} {
-    set_property -dict [list PACKAGE_PIN $pin IOSTANDARD LVCMOS33] [get_ports $port]
-}
-foreach color {R G B} pins {{A3 B4 C5 A4} {C6 A5 B6 A6} {B7 C7 D7 D8}} {
-    for {set i 0} {$i < 4} {incr i} {
-        set p [get_ports [format {VGA_%s[%d]} $color $i]]
-        set_property -dict [list PACKAGE_PIN [lindex $pins $i] IOSTANDARD LVCMOS33] $p
-    }
-}
-# Asynchronous controls terminate at explicitly marked first-stage synchronizers.
-set_false_path -from [get_ports {SW[*] BTNC}] -to [get_cells -hier -filter {NAME =~ */meta_reg*}]
-set_false_path -from [get_ports CPU_RESETN]
-# Conservative board-output timing budget; these peripherals have no shared clock.
-set_output_delay -clock sys_clk -max 2.0 [all_outputs]
-set_output_delay -clock sys_clk -min 0.0 [all_outputs]
+# Nexys A7-100T pin constraints for royale_top (Digilent master pinout).
+# Port names match the course VGA demo style.
+
+set_property -dict { PACKAGE_PIN E3    IOSTANDARD LVCMOS33 } [get_ports ClkPort]
+create_clock -add -name ClkPort -period 10.00 [get_ports ClkPort]
+
+set_property -dict { PACKAGE_PIN T10   IOSTANDARD LVCMOS33 } [get_ports {Ca}]
+set_property -dict { PACKAGE_PIN R10   IOSTANDARD LVCMOS33 } [get_ports {Cb}]
+set_property -dict { PACKAGE_PIN K16   IOSTANDARD LVCMOS33 } [get_ports {Cc}]
+set_property -dict { PACKAGE_PIN K13   IOSTANDARD LVCMOS33 } [get_ports {Cd}]
+set_property -dict { PACKAGE_PIN P15   IOSTANDARD LVCMOS33 } [get_ports {Ce}]
+set_property -dict { PACKAGE_PIN T11   IOSTANDARD LVCMOS33 } [get_ports {Cf}]
+set_property -dict { PACKAGE_PIN L18   IOSTANDARD LVCMOS33 } [get_ports {Cg}]
+set_property -dict { PACKAGE_PIN H15   IOSTANDARD LVCMOS33 } [get_ports Dp]
+set_property -dict { PACKAGE_PIN J17   IOSTANDARD LVCMOS33 } [get_ports {An0}]
+set_property -dict { PACKAGE_PIN J18   IOSTANDARD LVCMOS33 } [get_ports {An1}]
+set_property -dict { PACKAGE_PIN T9    IOSTANDARD LVCMOS33 } [get_ports {An2}]
+set_property -dict { PACKAGE_PIN J14   IOSTANDARD LVCMOS33 } [get_ports {An3}]
+set_property -dict { PACKAGE_PIN P14   IOSTANDARD LVCMOS33 } [get_ports {An4}]
+set_property -dict { PACKAGE_PIN T14   IOSTANDARD LVCMOS33 } [get_ports {An5}]
+set_property -dict { PACKAGE_PIN K2    IOSTANDARD LVCMOS33 } [get_ports {An6}]
+set_property -dict { PACKAGE_PIN U13   IOSTANDARD LVCMOS33 } [get_ports {An7}]
+
+set_property -dict { PACKAGE_PIN C12   IOSTANDARD LVCMOS33 } [get_ports BtnCpuReset]
+set_property -dict { PACKAGE_PIN N17   IOSTANDARD LVCMOS33 } [get_ports {BtnC}]
+
+set_property -dict { PACKAGE_PIN J15   IOSTANDARD LVCMOS33 } [get_ports {Sw[0]}]
+set_property -dict { PACKAGE_PIN L16   IOSTANDARD LVCMOS33 } [get_ports {Sw[1]}]
+set_property -dict { PACKAGE_PIN M13   IOSTANDARD LVCMOS33 } [get_ports {Sw[2]}]
+set_property -dict { PACKAGE_PIN R15   IOSTANDARD LVCMOS33 } [get_ports {Sw[3]}]
+set_property -dict { PACKAGE_PIN R17   IOSTANDARD LVCMOS33 } [get_ports {Sw[4]}]
+set_property -dict { PACKAGE_PIN T18   IOSTANDARD LVCMOS33 } [get_ports {Sw[5]}]
+set_property -dict { PACKAGE_PIN U18   IOSTANDARD LVCMOS33 } [get_ports {Sw[6]}]
+set_property -dict { PACKAGE_PIN R13   IOSTANDARD LVCMOS33 } [get_ports {Sw[7]}]
+set_property -dict { PACKAGE_PIN T8    IOSTANDARD LVCMOS18 } [get_ports {Sw[8]}]
+set_property -dict { PACKAGE_PIN U8    IOSTANDARD LVCMOS18 } [get_ports {Sw[9]}]
+set_property -dict { PACKAGE_PIN R16   IOSTANDARD LVCMOS33 } [get_ports {Sw[10]}]
+set_property -dict { PACKAGE_PIN T13   IOSTANDARD LVCMOS33 } [get_ports {Sw[11]}]
+set_property -dict { PACKAGE_PIN H6    IOSTANDARD LVCMOS33 } [get_ports {Sw[12]}]
+set_property -dict { PACKAGE_PIN U12   IOSTANDARD LVCMOS33 } [get_ports {Sw[13]}]
+set_property -dict { PACKAGE_PIN U11   IOSTANDARD LVCMOS33 } [get_ports {Sw[14]}]
+set_property -dict { PACKAGE_PIN V10   IOSTANDARD LVCMOS33 } [get_ports {Sw[15]}]
+
+set_property -dict { PACKAGE_PIN H17   IOSTANDARD LVCMOS33 } [get_ports {Ld[0]}]
+set_property -dict { PACKAGE_PIN K15   IOSTANDARD LVCMOS33 } [get_ports {Ld[1]}]
+set_property -dict { PACKAGE_PIN J13   IOSTANDARD LVCMOS33 } [get_ports {Ld[2]}]
+set_property -dict { PACKAGE_PIN N14   IOSTANDARD LVCMOS33 } [get_ports {Ld[3]}]
+set_property -dict { PACKAGE_PIN R18   IOSTANDARD LVCMOS33 } [get_ports {Ld[4]}]
+set_property -dict { PACKAGE_PIN V17   IOSTANDARD LVCMOS33 } [get_ports {Ld[5]}]
+set_property -dict { PACKAGE_PIN U17   IOSTANDARD LVCMOS33 } [get_ports {Ld[6]}]
+set_property -dict { PACKAGE_PIN U16   IOSTANDARD LVCMOS33 } [get_ports {Ld[7]}]
+set_property -dict { PACKAGE_PIN V16   IOSTANDARD LVCMOS33 } [get_ports {Ld[8]}]
+set_property -dict { PACKAGE_PIN T15   IOSTANDARD LVCMOS33 } [get_ports {Ld[9]}]
+set_property -dict { PACKAGE_PIN U14   IOSTANDARD LVCMOS33 } [get_ports {Ld[10]}]
+set_property -dict { PACKAGE_PIN T16   IOSTANDARD LVCMOS33 } [get_ports {Ld[11]}]
+set_property -dict { PACKAGE_PIN V15   IOSTANDARD LVCMOS33 } [get_ports {Ld[12]}]
+set_property -dict { PACKAGE_PIN V14   IOSTANDARD LVCMOS33 } [get_ports {Ld[13]}]
+set_property -dict { PACKAGE_PIN V12   IOSTANDARD LVCMOS33 } [get_ports {Ld[14]}]
+set_property -dict { PACKAGE_PIN V11   IOSTANDARD LVCMOS33 } [get_ports {Ld[15]}]
+
+set_property -dict { PACKAGE_PIN B4    IOSTANDARD LVCMOS33 } [get_ports { vgaR[1] }]
+set_property -dict { PACKAGE_PIN A3    IOSTANDARD LVCMOS33 } [get_ports { vgaR[0] }]
+set_property -dict { PACKAGE_PIN C5    IOSTANDARD LVCMOS33 } [get_ports { vgaR[2] }]
+set_property -dict { PACKAGE_PIN A4    IOSTANDARD LVCMOS33 } [get_ports { vgaR[3] }]
+set_property -dict { PACKAGE_PIN C6    IOSTANDARD LVCMOS33 } [get_ports { vgaG[0] }]
+set_property -dict { PACKAGE_PIN A5    IOSTANDARD LVCMOS33 } [get_ports { vgaG[1] }]
+set_property -dict { PACKAGE_PIN B6    IOSTANDARD LVCMOS33 } [get_ports { vgaG[2] }]
+set_property -dict { PACKAGE_PIN A6    IOSTANDARD LVCMOS33 } [get_ports { vgaG[3] }]
+set_property -dict { PACKAGE_PIN B7    IOSTANDARD LVCMOS33 } [get_ports { vgaB[0] }]
+set_property -dict { PACKAGE_PIN C7    IOSTANDARD LVCMOS33 } [get_ports { vgaB[1] }]
+set_property -dict { PACKAGE_PIN D7    IOSTANDARD LVCMOS33 } [get_ports { vgaB[2] }]
+set_property -dict { PACKAGE_PIN D8    IOSTANDARD LVCMOS33 } [get_ports { vgaB[3] }]
+set_property -dict { PACKAGE_PIN B11   IOSTANDARD LVCMOS33 } [get_ports { hSync }]
+set_property -dict { PACKAGE_PIN B12   IOSTANDARD LVCMOS33 } [get_ports { vSync }]
+
+set_property -dict { PACKAGE_PIN L13   IOSTANDARD LVCMOS33 } [get_ports {QuadSpiFlashCS}]
+
+set_false_path -from [get_ports {Sw[*] BtnC}] -to [get_cells -hier -filter {NAME =~ */meta_reg*}]
+set_false_path -from [get_ports BtnCpuReset]
 set_property CFGBVS VCCO [current_design]
 set_property CONFIG_VOLTAGE 3.3 [current_design]

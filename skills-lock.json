@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "skills": {
+    "systemverilog": {
+      "source": "Mindrally/skills",
+      "sourceType": "github",
+      "skillPath": "systemverilog/SKILL.md",
+      "computedHash": "1b8081b1f9ff72deff9aade2987ba1784a2ce8f641a490e8c6871f3037fac3bf"
+    }
+  }
+}
