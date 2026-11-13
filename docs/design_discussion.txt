@@ -1,0 +1,331 @@
+what is the feasability of making a simplified version of clashroyale to run on a fpga board (Nexys A7 with the Artix100T) through VGA to a monitor.
+
+Very feasible, as long as you scope it as “Clash Royale-style lane battler” rather than a faithful clone. The Nexys A7-100T is overkill for this.
+
+Why the hardware is plenty
+
+Artix-7 100T has ~63k LUTs, 135 BRAMs (about 4.8 Mb), and 240 DSP slices. A simple 2D game uses a small fraction of that.
+VGA on the Nexys A7 is 12-bit color (4 bits per channel) through resistor ladders, which is fine for sprite art.
+640x480@60Hz needs a 25.175 MHz pixel clock (25 MHz works on most monitors). Easy to generate with the MMCM.
+The real constraint: framebuffer memory
+A full 640x480 framebuffer at 12 bpp is ~3.7 Mb, which technically fits in BRAM but eats nearly all of it. Better options:
+
+Render at 320x240 and pixel-double to 640x480. 320x240x12 = ~920 kb, which is comfortable. Even 4-bit indexed color with a palette drops it to ~300 kb.
+Skip the framebuffer entirely and use a “racing the beam” design: for each pixel, combinatorially decide what color it is from tile map + sprite positions. This is the classic approach, and it’s how NES-era hardware worked. Very FPGA-native.
+The Nexys A7 also has 128 MB DDR2, but driving it (MIG IP) adds a lot of complexity. You don’t need it.
+What’s realistic to build
+
+A tile-based arena (static background from a ROM/BRAM tile map: river, bridges, towers).
+2 to 3 troop types with different speed/HP/damage, maybe 8 to 16 units on screen at once. Sprite rendering is a per-pixel comparator against each unit’s bounding box, so unit count scales with logic, not memory.
+Two lanes, bridge crossing, simple target-nearest-tower or nearest-enemy AI.
+Towers with HP bars, win condition when a king tower falls.
+Elixir counter that ticks up, card buttons on the board’s switches/buttons to deploy.
+Game logic updated once per frame (during vblank), so timing stays simple.
+What’s hard or worth cutting
+
+Pathfinding: skip A*. Use fixed lanes and “walk toward nearest target” with simple collision (or none).
+Smooth physics and unit pushing: cut it.
+Large sprite art: store sprites in BRAM as small indexed bitmaps (e.g. 16x16, 4-bit). You’ll need a script to convert PNGs to .coe/.mem files.
+Input: 5 buttons + 16 switches is enough for deploying cards. A USB mouse (PS/2 emulation on the A7 USB-HID port) is doable but is a side project. Skip it initially.
+Opponent: a simple LFSR-driven random spawner works fine as the “enemy.”
+Architecture I’d suggest
+
+VGA timing generator + MMCM (do this first, display a test pattern).
+Tile/background renderer from BRAM ROM.
+Sprite engine: unit table in registers, per-pixel overlap check, priority mux.
+Game logic FSM or a small soft CPU (MicroBlaze or a tiny RISC-V). Pure RTL is fine for this scope, but a soft CPU makes game logic much faster to iterate on if you’re comfortable with the toolchain.
+Input debounce, elixir/card logic, enemy spawner.
+Audio is optional (the board has PWM audio out), so treat it as stretch.
+Effort estimate
+
+VGA test pattern to moving sprite: a weekend if you’ve done Verilog before.
+Playable two-lane prototype with towers, 3 troops, and win/lose: roughly 3 to 6 weeks part-time, mostly spent on game logic and debugging timing, not on resource limits.
+Full-fidelity Clash Royale (deck system, ~100 card behaviors, free-roam pathing, networking): not realistic, and not a good use of an FPGA.
+Biggest risks
+
+Too much combinational logic in the pixel path causing timing failures at the pixel clock. Pipeline the sprite lookups by a cycle or two.
+Scope creep. Lock the feature list early.
+Sprite art pipeline friction, so automate the PNG-to-memory conversion in Python early.
+If you want, I can sketch the module hierarchy or give you a Verilog starting point for the VGA controller plus a sprite renderer.
+
+to control, we can use the switches and the button pad. use switch to deploy characters and enable p1 or p2 to use button pad
+
+That scheme works well and costs almost nothing in logic. Here’s how I’d lay it out.
+
+Split the roles: switches pick what, the pad picks where
+
+Card switches: flipping one deploys that card at your cursor’s current position.
+Button pad: moves your cursor (L/R picks the lane, U/D picks depth within your own half). BTNC can confirm or cycle something later if you want.
+Pad owner switch: decides whose cursor the pad moves. Both cursors keep their position when you’re not the owner, so players can hand the pad back and forth.
+Physical layout (matters on the Nexys A7)
+SW0 is the rightmost switch and SW15 is the leftmost, so match the players to their sides:
+
+P1 cards: SW[15:12] (left side)
+P2 cards: SW[3:0] (right side)
+Pad owner: SW[8] (0 = P1, 1 = P2), somewhere in the middle
+The 5-button pad sits on the right side of the board, which is a bit unfair to P1, so the owner switch matters.
+Use the LEDs above the switches to show who currently owns the pad.
+If you’d rather have separate “enable P1” and “enable P2” switches, you can, but you have to define what happens when both are on or both are off. A single owner switch avoids that, so I’d start there.
+
+Deploy logic
+
+Run each switch through a 2-FF synchronizer, then a short debounce (a few ms is plenty).
+Detect an edge on the synchronized switch, either direction, so flipping up or down both deploy. Rising-edge only is also fine, but then you have to flip it back down before reusing the card, which feels like a built-in cooldown.
+On an edge, check elixir. If there isn’t enough, drop the request and spawn nothing.
+Process at most one deploy per player per frame (latch the request and consume it in vblank). If two edges land in the same frame, just take them in priority order.
+Edge-detect the buttons too, so a held button doesn’t scroll the cursor at 60 moves per second. Either move once per press, or add a slow repeat timer (about every 8 to 10 frames) when held.
+Cursor rules
+
+Clamp each cursor to its own half of the arena so nobody drops troops next to the enemy king tower.
+Draw the cursor as a blinking box using the same sprite path as units, with a different palette.
+The 7-segment display has 8 digits, so use 4 for each player’s elixir.
+Gotchas
+
+If P1 and P2 both flip a card in the same frame, it should just work if your spawn logic handles two requests per frame (a 2-entry queue is enough). Don’t let one player’s input starve the other.
+Switches don’t tell you “intent” the way buttons do. If someone leaves a card switch up at power-on, you’ll get a phantom deploy. Initialize the edge detector to the current switch state at reset so it doesn’t fire.
+A fixed 4-card hand per player is the simplest version. A rotating hand (like the real game) needs a small FIFO/shuffle, so save it for later.
+Want me to write the input module (synchronizer, debounce, edge detect, cursor FSM) in Verilog? It’s small enough to do in one file and you can test it with just the LEDs before the VGA side exists.
+
+give a project pitch summary
+
+
+Memory: Memory write
+Memory: Memory write
+Project Pitch: FPGA Lane Battler
+
+One-liner: A two-player, Clash Royale-style strategy game built entirely in hardware on a Nexys A7-100T and played on a monitor over VGA. No CPU running a game engine, just logic wired to the screen.
+
+The idea: Two players share one board. Each side has a hand of troop cards, an elixir meter that fills over time, and a set of towers to defend. Deploy troops into two lanes, push across the bridge, and take down the enemy king tower to win.
+
+How you play:
+
+Card switches deploy a troop at your cursor (P1 on the left switches, P2 on the right).
+A pad-owner switch decides whose cursor the button pad moves, so the two players trade the pad.
+Elixir gates every deploy. The 7-segment display shows both players’ elixir.
+How it’s built:
+
+640x480 VGA at 60 Hz, rendered at 320x240 and pixel-doubled, or drawn on the fly with no framebuffer.
+Tile-based arena from BRAM, plus a hardware sprite engine for troops, towers, HP bars, and cursors.
+Game logic updates once per frame during vblank: fixed lanes, walk toward the nearest target, simple combat, an LFSR-driven spawner for solo play.
+Input chain is synchronizers, debounce, and edge detection, so switches and buttons behave cleanly.
+Why it’s worth doing:
+
+Hits the core digital design skills in one project: video timing, memory, FSMs, pipelining, clock-domain handling, and timing closure.
+Results are visual and immediately demoable.
+The hardware has plenty of headroom, so the limit is scope, not resources.
+Scope:
+
+In: 1 arena, 2 lanes, 3 troop types, towers, elixir, win/lose screen, 2-player controls.
+Stretch: rotating card hand, audio over PWM, solo mode vs. AI, mouse input.
+Out: free-roam pathfinding, physics, full card roster, networking.
+Milestones:
+
+VGA test pattern and clock setup (weekend).
+Tile background and one moving sprite.
+Input module: switches, pad, cursors.
+Troop spawning, movement, and combat.
+Towers, elixir, win/lose.
+Polish, balancing, stretch features.
+Timeline: about 3 to 6 weeks part-time for a playable prototype.
+
+Main risks: timing failures in the pixel path (fix by pipelining), scope creep (lock the feature list early), and the sprite art pipeline (automate PNG-to-memory conversion in Python from the start).
+
+If you want this as a one-page doc for a class, club, or sponsor, tell me the audience and I’ll tighten it up.
+
+The EE354 project involves building some sort of cool digital design using the provided A7 FPGAs. This design can use any of the available I/O, including but not limited to: Switches, LEDs, SSDs, buttons, VGA, USB (keyboard, mouse, etc.), Ethernet, pin headers, temperature sensor, accelerometer, microphone, and mono audio. Although there are many input output modes available, please note that most projects only use the switches, LEDs, SSDs, buttons, and/or VGA to interface with the outside world.
+
+The design itself can basically be anything that you can think to use an FPGA for. Almost all projects are VGA output games (snake, tetris, pacman, 2048, space invaders, flappy bird, etc.), since that is what the skeleton code provides. It is not required to be this though, you could also implement some algorithms such as matrix multiplication, FFT, or HFT algorithms and then write a testbench to check its correctness and then measure its performance on the board (# clock cycles, resources utilized, energy, etc).
+
+We provide skeleton code which you can build your project on top of, linked below in EE354_vga_demo.zip. A guide to the skeleton code is linked below in "VGA Demo.docx". An explanation of how the code works is also provided in "VGA_tutorial_1__1_.avi".
+EE354_vga_demo.zip
+VGA Demo.docx
+
+The project itself will be graded holistically on a 10 point scale. There is no clear-cut rubric, the grades will be assigned based off of how impressive and complete we judge your project to be. Extra credit is available to teams who go the extra mile, up to 2 points extra for a max of 12/10.
+
+You will demo your project to your peers and TA in your lab section on the last week of classes (Dec 3rd - 5th). There will be a write-up due after that, further details on that will be released later.
+
+-Notes-
+
+Since nowadays VGA monitors are no longer commonplace, it can be useful to buy a VGA to HDMI adapter (and a HDMI cable if you don't have one). This allows you to develop and debug your game on any HDMI monitor or TV. A guide to buying adapters is linked below:
+
+EE354L_VGA_to_HDMI_Adapter.pdf
+
+If you are interested in displaying complex images and/or GIFs through the VGA interface in your project, you may want to look at the ee354_optimized_sprite_script.py. The script is explained by Fall23 Lab Mentor Munir Bshara, in the corresponding video EE354SpriteGeneration.mp4.
+
+ee354_optimized_sprite_script.py
+EE354SpriteGeneration.mp4
+
+Reference links for the sprite script:
+https://embeddedthoughts.com/2016/07/30/storing-image-data-in-block-ram-on-a-xilinx-fpga/
+https://ezgif.com
+
+This fits well. A two-player Clash Royale-style game is squarely in the “VGA game” lane, and it’s more ambitious than the usual snake/tetris clone, which helps with “impressive.” But the Dec 3-5 demo is about 4.5 weeks out, so the pitch needs to get tighter.
+
+What the skeleton buys you
+
+The VGA timing, clocking, and display pipeline are already done, so my milestone 1 (test pattern and MMCM setup) is basically free.
+The sprite script handles PNG/GIF to BRAM conversion, which was one of my listed risks. Use it from day one instead of writing your own.
+I can’t open the Brightspace links, so if you paste the text of the VGA Demo doc I can match my module suggestions to how their code is actually structured.
+Revised timeline (demo Dec 3-5)
+
+Nov 2-9: skeleton running on your board, arena background, one sprite moving, VGA-to-HDMI adapter sorted so you can test at home.
+Nov 9-16: input module (switches, pad ownership, cursors), troop spawning and movement.
+Nov 16-23: combat, towers with HP, elixir, win/lose screen.
+Nov 23-30: feature freeze around Nov 25, then balance, bug-fix, and demo rehearsal. Thanksgiving week will eat time, so don’t plan real dev work in it.
+Dec 1-2: buffer. Do not plan to use it.
+Scope calls given the grading
+“Impressive and complete” means a finished, polished smaller game beats a half-working bigger one. I’d commit to: 1 arena, 2 lanes, 3 troop types, towers, elixir, 2-player controls, and a clean win screen. Everything else is stretch.
+
+Extra credit candidates (only after the core works)
+
+Solo mode vs. an LFSR-driven or simple-AI opponent.
+Audio over the PWM output (spawn and tower-hit sounds).
+Rotating card hand.
+A testbench plus a short resource/timing report in the write-up, since they’ll want that anyway and it shows rigor.
+One thing to check: if it’s a team project, the clean split is input/game logic on one side and rendering/sprites on the other, with a shared interface of unit positions and HP. That lets both of you work in parallel without stepping on each other.
+
+Want me to write the input module first, or the unit table and sprite renderer? Those are the two pieces everything else hangs off.
+
+give handoff for me to go make slides pitch deck. Give all info
+
+Handoff: EE354 Pitch Deck, FPGA Lane Battler
+Paste this into whatever slide tool you’re using. Fill in the [brackets] first.
+
+1. Context
+Course: EE354 (USC) final project. Build something with the provided Nexys A7 FPGA boards. Most projects are VGA games built on the skeleton code.
+Grading: holistic, 10 points, no rubric. Judged on how impressive and complete the project is. Up to 2 extra credit points (max 12/10).
+Demo: last week of classes, Dec 3-5, to peers and TA in your lab section. A write-up is due after, details TBD.
+Purpose of this deck: pitch the project idea. Audience is [TA / lab section / instructor]. Length: [~5 min / 8 to 10 slides].
+Team: [names, who does what]
+2. The project
+Title ideas: “Royale on Silicon,” “FPGA Royale,” “Lane Battler” (pick or replace).
+
+One-liner: a two-player, Clash Royale-style strategy game running entirely in hardware on a Nexys A7-100T (Artix-7), displayed over VGA.
+
+Gameplay:
+
+Two players share one arena with two lanes and a river with bridges.
+Each player has a hand of troop cards, an elixir meter that refills over time, and towers to defend, including a king tower.
+Deploying a troop costs elixir. Troops walk toward the nearest enemy target and fight.
+Win by destroying the enemy king tower.
+Controls (no mouse or keyboard needed):
+
+Card switches deploy a troop at your cursor. P1 uses the left switches (SW15 to SW12), P2 uses the right (SW3 to SW0).
+A pad-owner switch (SW8) decides whose cursor the button pad moves, so players trade the pad.
+The button pad moves the cursor: left/right picks the lane, up/down picks depth. Cursors are clamped to each player’s own half.
+LEDs show who owns the pad. The 7-segment display shows both players’ elixir.
+3. Technical design
+Hardware (Nexys A7-100T): about 63k LUTs, 135 BRAM blocks (about 4.8 Mb), 240 DSP slices, 12-bit VGA (4 bits per channel), plenty of headroom for this scope.
+
+Display:
+
+640x480 @ 60 Hz, 25 MHz pixel clock from the MMCM.
+Render at 320x240 and pixel-double, or draw on the fly with no framebuffer (racing the beam).
+Course skeleton code already provides VGA timing and the display pipeline.
+Modules:
+
+VGA controller and clocking (from skeleton).
+Tile/background renderer from BRAM ROM (river, bridges, towers).
+Sprite engine: unit table in registers, per-pixel bounding-box overlap check, priority mux. Sprites stored as small indexed bitmaps (e.g. 16x16, 4-bit) in BRAM, generated by the course’s sprite script.
+Game logic: updates once per frame during vblank. Fixed lanes, walk-toward-nearest-target, simple combat, tower HP, elixir counter, win/lose FSM.
+Input: 2-FF synchronizers, debounce, edge detection, cursor FSM, deploy queue (up to 2 requests per frame).
+Enemy spawner for solo play: LFSR-driven.
+Design decisions worth showing off:
+
+Game state updates in vblank so timing stays simple.
+Pipelining the sprite lookup to meet pixel-clock timing.
+Edge detector initialized to the current switch state at reset to avoid phantom deploys.
+Deliberately no A*, no physics, no free-roam pathing.
+4. Scope
+In (committed): 1 arena, 2 lanes, 3 troop types, towers with HP bars, elixir, 2-player controls, win/lose screen.
+Stretch / extra credit: solo mode vs. AI, PWM audio (spawn and hit sounds), rotating card hand, testbench plus resource/timing report.
+Out: free-roam pathfinding, physics, full card roster, networking, mouse input.
+5. Timeline (demo Dec 3-5)
+Nov 2-9: skeleton running, arena background, one moving sprite, VGA-to-HDMI adapter sorted.
+Nov 9-16: input module (switches, pad, cursors), troop spawning and movement.
+Nov 16-23: combat, towers with HP, elixir, win/lose.
+Nov 23-30: feature freeze around Nov 25, then balance, bug-fix, rehearse. Thanksgiving week is slow.
+Dec 1-2: buffer.
+6. Risks and mitigations
+Pixel-path timing failures → pipeline the sprite lookups.
+Scope creep → lock the feature list early, freeze around Nov 25.
+Sprite art pipeline friction → use the course’s sprite script from day one.
+Thanksgiving week lost → plan no real dev work in it.
+Test setup → get a VGA-to-HDMI adapter so you can develop at home.
+7. Why it’s worth grading well
+Covers a lot of the course in one project: video timing, memory, FSMs, pipelining, timing closure.
+Visual, interactive, and demoable live.
+Two-player hardware game is more ambitious than the usual snake/tetris clone but scoped to actually finish.
+8. Suggested slide outline (8 to 10 slides)
+Title: project name, team, course.
+The pitch: one-liner plus a mockup or screenshot of the arena (draw a quick one if you don’t have a build yet).
+Gameplay: lanes, elixir, towers, win condition. A simple arena diagram works well here.
+Controls: a Nexys A7 board diagram with switches, button pad, LEDs, and 7-seg labeled by role.
+Architecture: block diagram: input → game logic → sprite/tile renderer → VGA, with BRAM and clock blocks.
+Technical approach: 320x240 pixel-doubled or beam-racing, sprite engine, vblank updates, the timing concern.
+Scope: committed vs. stretch vs. cut, as three columns.
+Timeline: week-by-week bar.
+Risks and plan: short table.
+Demo plan: what you’ll show live on Dec 3-5, plus the extra-credit targets. End with the ask or a closing line.
+9. Visuals to make
+Arena mockup (2 lanes, river, bridges, 2 king towers, 4 side towers).
+Board diagram with switch and button roles labeled.
+Block diagram of the modules.
+Timeline bar.
+If you have a build by then: a photo of the monitor running it.
+10. Style notes
+Keep slides sparse: one idea per slide, short bullets.
+Put the arena visual early, since that’s what makes it land.
+Pick a Clash Royale-adjacent palette (blues and golds) for the deck, but don’t use official game art or logos.
+11. Open items to fill in
+Team names and roles.
+Final project name.
+Whether the skeleton’s file structure changes the module breakdown (paste the VGA Demo doc text and the architecture slide can be updated to match).
+Audience and time limit.
+Any numbers from the first working build (resource usage, timing) if you have them before the pitch.
+you make a pitch deck too
+
+I’ll build the deck as a slide artifact, starting by checking which slide types are available.
+
+
+Updated tasks, updated memory, used a tool
+Updated tasks, updated memory, used a tool
+A
+
+Used artifacts
+Published artifact: /artifact/L7iG3URhWaSKUiA8x26w72
+
+Going with a navy-and-gold look, Oswald for headings and DM Sans for text, 10 slides, with [Team names] left as a placeholder on the cover.
+
+
+Created 8 files, updated tasks
+Created 8 files, updated tasks
+A
+
+Used artifacts
+Published artifact: /artifact/L7iG3URhWaSKUiA8x26w72
+
+A
+
+Used artifacts
+Published artifact: /artifact/L7iG3URhWaSKUiA8x26w72
+
+A
+
+Used artifacts
+Published artifact: /artifact/L7iG3URhWaSKUiA8x26w72
+
+This response didn’t load.
+it looks to AI and needs to have less flashiness and more minimalism. Use light blue and light red. make it much simpler and shorten length to like 5 pages. more concise and basic
+
+Stripping it back: white background, light blue and light red only, one typeface, 5 slides.
+
+
+Created 6 files
+Created 6 files
+A
+
+Used artifacts
+Published artifact: /artifact/L7iG3URhWaSKUiA8x26w72
+
+Looks like your message came through empty — what did you want to change or add?

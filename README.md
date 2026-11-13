@@ -1,12 +1,24 @@
 # FPGA Royale
 
-First playable hardware prototype for the Nexys A7-100T (`xc7a100tcsg324-1`).
+First playable hardware prototype for the Nexys A7-100T (`xc7a100tcsg324-1`), written in Verilog-2001. RTL and testbenches use `.v` files, `wire`/`reg`, ordinary `always` blocks, and explicit port connections. Shared constants/functions are included from `rtl/royale_defs.vh`.
+
+## Repository contents
+
+- `rtl/`, `sim/`, `scripts/`, and `constraints/`: current Verilog implementation and build/test entry points.
+- `instructions/`: all 17 supplied/downloaded course instruction and reference files, including the VGA starter archives and tutorial videos.
+- `docs/pitch/`: the saved pitch and earlier presentation versions. These precede the five-lane/four-card decisions; the rules below describe the current implementation.
+- `docs/design_discussion.txt`: early design discussion, retained as historical context.
+- `docs/reference/`: board reference image.
+- `docs/verification/`: ModelSim results and the rendered sample screen.
+- `docs/materials_manifest.md`: checksums for the imported materials.
+
+Build outputs, installed/downloaded simulator binaries, and cached browser pages are excluded from version control.
 
 ## Current checkpoint
 
-Implementation is written for the game engine, independent switch controllers, five-lane VGA renderer, elixir display, and board integration. Vivado and ModelSim accepted all source/testbench files without compilation errors. Icarus completed 50 gameplay checks and 10 input checks successfully. The video simulation was stopped at the user's request; its raster and screen output remain unverified. Synthesis, timing, and bitstream generation remain unverified because both installed commercial tools reported license checkout failures. No board was programmed.
+The implementation and testbenches are now Verilog-2001. ModelSim compiled all sources using `-vlog01compat` with zero compilation errors or warnings, then passed 50 gameplay checks, 10 input checks, and 8 video checks. The video test checked a complete 800x525 raster, a 640x480 visible area, sync timing, one game tick per frame, blanking, and 307,200 rendered pixels. Its sample screen is written to `build/modelsim/sample_screen.ppm`; a portable preview and results summary are saved in [docs/verification](docs/verification/simulation_results.md).
 
-The next session should review the source and decide when to resume video simulation and the Vivado build. Troop balance and physical controls still need board testing.
+The ModelSim license is working. Vivado synthesis, timing, bitstream generation, and physical-board testing remain unverified; they were not rerun during this simulation task. Troop balance and physical controls still need board testing.
 
 ## Agreed rules
 
@@ -41,7 +53,7 @@ Card codes: `00` Giant, `01` Ice Golem, `10` Knight, `11` Mini P.E.K.K.A. Lane c
 
 ## Initial balance values
 
-These are adjustable starting values, not final balance. Stats are centralized in `rtl/royale_pkg.sv`.
+These are adjustable starting values, not final balance. Stats are centralized in `rtl/royale_defs.vh`.
 
 | Card | Cost | HP | Damage | Move every | Attack every |
 | --- | --- | --- | --- | --- | --- |
@@ -54,25 +66,30 @@ Movement is one pixel per movement interval across a 360-pixel field. Melee rang
 
 ## Structure and timing
 
+Module interfaces carry flattened vectors: slot `i` occupies `progress[i*9 +: 9]`, `health[i*8 +: 8]`, and `kind[i*2 +: 2]`. Player `p` occupies `elixir[p*4 +: 4]`, lane selection `[p*3 +: 3]`, and card/error selection `[p*2 +: 2]`. These indexed slices are standard Verilog-2001.
+
 All logic uses the board's 100 MHz clock. A pixel enable every four cycles generates 640x480 VGA with 800x525 total timing at 25 MHz (about 59.52 frames/second). One game tick at the beginning of vertical blank updates the complete game state before the next visible frame. Consequently 60 game ticks take about 1.008 seconds; the nominal three-minute timeout is about 181.44 seconds. There are no logic-generated clocks or vendor IP dependencies.
 
-- `game_core.sv`: idle/play/game-over controller, ten unit slots, combat, elixir, deployment, scoring.
-- `input_filter.sv`, `command_capture.sv`: synchronizers, stable-input filtering, independent request snapshots.
-- `vga_timing.sv`, `arena_renderer.sv`: VGA raster and simple prototype graphics.
-- `seven_segment.sv`, `royale_top.sv`: board display and integration.
+- `game_core.v`: idle/play/game-over controller, ten unit slots, combat, elixir, deployment, scoring.
+- `input_filter.v`, `command_capture.v`: synchronizers, stable-input filtering, independent request snapshots.
+- `vga_timing.v`, `arena_renderer.v`: VGA raster and simple prototype graphics.
+- `seven_segment.v`, `royale_top.v`: board display and integration.
 - `constraints/nexys_a7_100t.xdc`: board pin assignments derived from the official [Digilent master constraints](https://github.com/Digilent/digilent-xdc/blob/master/Nexys-A7-100T-Master.xdc).
 
 ## Build and simulation
 
-With Vivado installed (the scripts also detect this computer's `C:\AMDDesignTools\2026.1\Vivado\bin`):
+With ModelSim or Vivado installed (the scripts have defaults for this computer; override their tool-path parameters on another computer):
 
 ```powershell
+.\scripts\simulate_modelsim.ps1
+# Alternatively, use the Vivado simulator:
 .\scripts\simulate.ps1
+# Synthesis and bitstream generation:
 .\scripts\build.ps1
 ```
 
-Alternative simulation entry points are `scripts/simulate_modelsim.ps1` and `scripts/simulate_icarus.ps1`. A portable Icarus package from the official MSYS2 repository was extracted under the ignored `build/tools` directory for this checkpoint; it did not change the system installation or permanent PATH. The Icarus script detects it automatically. It also works with an existing Icarus installation supplied through its `-IcarusBin` option. Each player has one queued request snapshot; if multiple filtered deployment toggles arrive before one game tick, the latest request replaces the earlier pending request.
+ModelSim compiles with `-vlog01compat` to check Verilog-2001 compatibility; Vivado uses its Verilog compiler without SystemVerilog mode. The optional Icarus script uses `-g2001`. A portable Icarus package from the official MSYS2 repository was extracted under the ignored `build/tools` directory for this checkpoint; it did not change the system installation or permanent PATH. The Icarus script detects it automatically. It also works with an existing Icarus installation supplied through its `-IcarusBin` option. Each player has one queued request snapshot; if multiple filtered deployment toggles arrive before one game tick, the latest request replaces the earlier pending request.
 
 Simulation runs directed gameplay/input/raster checks and generates a sample screen. The build script synthesizes, places, routes, checks timing, and writes `build/royale_top.bit` plus reports. A failing timing/DRC check fails the build. Neither script programs a board. Load the bitstream through Vivado Hardware Manager when ready to test the physical board.
 
-The VGA archive in `../instructions` was reviewed as a reference; this implementation uses a single clock and explicit resets rather than the archive's cascaded clock dividers. Simple colored units intentionally precede sprite artwork. Hardware operation and gameplay balance still require a physical-board playtest.
+The VGA archive in `instructions/` was reviewed as a reference; this implementation uses a single clock and explicit resets rather than the archive's cascaded clock dividers. Simple colored units intentionally precede sprite artwork. Hardware operation and gameplay balance still require a physical-board playtest.

@@ -2,9 +2,8 @@ set project_root [file normalize [file join [file dirname [info script]] ..]]
 set out [file join $project_root build]
 file mkdir $out
 set_param general.maxThreads 4
-read_verilog -sv [file join $project_root rtl royale_pkg.sv]
-foreach source [glob [file join $project_root rtl *.sv]] {
-    if {[file tail $source] ne "royale_pkg.sv"} { read_verilog -sv $source }
+foreach source [glob [file join $project_root rtl *.v]] {
+    read_verilog -include_dirs [list [file join $project_root rtl]] $source
 }
 read_xdc [file join $project_root constraints nexys_a7_100t.xdc]
 synth_design -top royale_top -part xc7a100tcsg324-1

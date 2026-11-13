@@ -1,19 +1,19 @@
 `timescale 1ns/1ps
 module command_capture (
-    input logic clk, reset, enabled, consume,
-    input logic [1:0] toggle,
-    input logic [1:0][2:0] lane,
-    input logic [1:0][1:0] card,
-    output logic [1:0] pending,
-    output logic [1:0][2:0] request_lane,
-    output logic [1:0][1:0] request_card
+    input wire clk, reset, enabled, consume,
+    input wire [1:0] toggle,
+    input wire [5:0] lane,
+    input wire [3:0] card,
+    output reg [1:0] pending,
+    output reg [5:0] request_lane,
+    output reg [3:0] request_card
 );
-    logic [1:0] previous_toggle;
+    reg [1:0] previous_toggle;
     integer player;
-    always_ff @(posedge clk) begin
+    always @(posedge clk) begin
         if (reset) begin
             previous_toggle <= toggle;
-            pending <= 0; request_lane <= '0; request_card <= '0;
+            pending <= 0; request_lane <= 0; request_card <= 0;
         end else begin
             previous_toggle <= toggle;
             if (!enabled) pending <= 0;
@@ -24,8 +24,8 @@ module command_capture (
                     // the next tick, after the old snapshot has been consumed.
                     if (toggle[player] != previous_toggle[player]) begin
                         pending[player] <= 1;
-                        request_lane[player] <= lane[player];
-                        request_card[player] <= card[player];
+                        request_lane[(player)*3 +: 3] <= lane[(player)*3 +: 3];
+                        request_card[(player)*2 +: 2] <= card[(player)*2 +: 2];
                     end
                 end
             end

@@ -7,13 +7,13 @@ if (-not (Test-Path (Join-Path $VivadoBin 'xvlog.bat'))) {
 }
 $simDirectory = Join-Path $projectRoot 'build/sim'
 New-Item -ItemType Directory -Force $simDirectory | Out-Null
-$sources = @((Join-Path $projectRoot 'rtl/royale_pkg.sv'))
-$sources += Get-ChildItem (Join-Path $projectRoot 'rtl') -Filter '*.sv' | Where-Object Name -ne 'royale_pkg.sv' | ForEach-Object FullName
-$sources += Get-ChildItem (Join-Path $projectRoot 'sim') -Filter '*_tb.sv' | ForEach-Object FullName
+$rtlDirectory = Join-Path $projectRoot 'rtl'
+$sources = @(Get-ChildItem $rtlDirectory -Filter '*.v' | ForEach-Object FullName)
+$sources += Get-ChildItem (Join-Path $projectRoot 'sim') -Filter '*_tb.v' | ForEach-Object FullName
 Push-Location $simDirectory
 try {
-    & (Join-Path $VivadoBin 'xvlog.bat') --sv @sources
-    if ($LASTEXITCODE -ne 0) { throw 'SystemVerilog compilation failed.' }
+    & (Join-Path $VivadoBin 'xvlog.bat') -i $rtlDirectory @sources
+    if ($LASTEXITCODE -ne 0) { throw 'Verilog compilation failed.' }
     foreach ($test in @('game_core_tb','input_tb','video_tb')) {
         & (Join-Path $VivadoBin 'xelab.bat') $test -s $test
         if ($LASTEXITCODE -ne 0) { throw "Test elaboration failed: $test" }

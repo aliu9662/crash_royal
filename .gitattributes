@@ -1,0 +1,10 @@
+* text=auto
+*.v text eol=lf
+*.vh text eol=lf
+*.tcl text eol=lf
+*.md text eol=lf
+*.ps1 text eol=crlf
+
+# Keep imported course materials and historical discussion byte-for-byte intact.
+instructions/** -text
+docs/design_discussion.txt -text

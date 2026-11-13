@@ -10,13 +10,13 @@ $originalPath = $env:PATH
 $env:PATH = "$IcarusBin;C:/msys64/mingw64/bin;$originalPath"
 $simDirectory = Join-Path $projectRoot 'build/icarus'
 New-Item -ItemType Directory -Force $simDirectory | Out-Null
-$sources = @((Join-Path $projectRoot 'rtl/royale_pkg.sv'))
-$sources += Get-ChildItem (Join-Path $projectRoot 'rtl') -Filter '*.sv' | Where-Object Name -ne 'royale_pkg.sv' | ForEach-Object FullName
-$sources += Get-ChildItem (Join-Path $projectRoot 'sim') -Filter '*_tb.sv' | ForEach-Object FullName
+$rtlDirectory = Join-Path $projectRoot 'rtl'
+$sources = @(Get-ChildItem $rtlDirectory -Filter '*.v' | ForEach-Object FullName)
+$sources += Get-ChildItem (Join-Path $projectRoot 'sim') -Filter '*_tb.v' | ForEach-Object FullName
 Push-Location $simDirectory
 try {
     foreach ($test in @('game_core_tb','input_tb','video_tb')) {
-        & (Join-Path $IcarusBin 'iverilog.exe') -g2012 -s $test -o "$test.vvp" @sources 2> "$test.compile.log"
+        & (Join-Path $IcarusBin 'iverilog.exe') -g2001 -I $rtlDirectory -s $test -o "$test.vvp" @sources 2> "$test.compile.log"
         if ($LASTEXITCODE -ne 0) { Get-Content "$test.compile.log"; throw "Compilation failed: $test" }
         & (Join-Path $IcarusBin 'vvp.exe') "$test.vvp" | Tee-Object -FilePath "$test.log"
         if ($LASTEXITCODE -ne 0) { throw "Simulation failed: $test" }
