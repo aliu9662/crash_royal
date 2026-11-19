@@ -19,7 +19,7 @@ if (Test-Path $spriteDir) {
 $sources += Get-ChildItem (Join-Path $projectRoot 'sim') -Filter '*_tb.v' | ForEach-Object FullName
 Push-Location $simDirectory
 try {
-    foreach ($test in @('game_core_tb','input_tb','video_tb')) {
+    foreach ($test in @('game_core_tb','input_tb','video_tb','display_io_tb')) {
         & (Join-Path $IcarusBin 'iverilog.exe') -g2001 -I $rtlDirectory -s $test -o "$test.vvp" @sources 2> "$test.compile.log"
         if ($LASTEXITCODE -ne 0) { Get-Content "$test.compile.log"; throw "Compilation failed: $test" }
         & (Join-Path $IcarusBin 'vvp.exe') "$test.vvp" | Tee-Object -FilePath "$test.log"

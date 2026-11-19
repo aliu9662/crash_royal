@@ -22,7 +22,7 @@ try {
     }
     & (Join-Path $QuestaBin 'vlog.exe') -vlog01compat "+incdir+$rtlDirectory" -work work @sources
     if ($LASTEXITCODE -ne 0) { throw 'Verilog compilation failed.' }
-    foreach ($test in @('game_core_tb','input_tb','video_tb')) {
+    foreach ($test in @('game_core_tb','input_tb','video_tb','display_io_tb')) {
         & (Join-Path $QuestaBin 'vsim.exe') -c "work.$test" -l "$test.log" -do 'onerror {quit -code 1}; onbreak {quit -code 1}; run -all; quit -code 0'
         if ($LASTEXITCODE -ne 0) { throw "Simulation failed: $test" }
         if (-not (Select-String -LiteralPath "$test.log" -SimpleMatch "PASS ${test}:" -Quiet)) {

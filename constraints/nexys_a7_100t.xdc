@@ -77,5 +77,12 @@ set_property -dict { PACKAGE_PIN L13   IOSTANDARD LVCMOS33 } [get_ports {QuadSpi
 
 set_false_path -from [get_ports {Sw[*] BtnC}] -to [get_cells -hier -filter {NAME =~ */meta_reg*}]
 set_false_path -from [get_ports BtnCpuReset]
+# These outputs drive asynchronous LEDs/SSD and analog VGA, with no external
+# 100 MHz capture clock. Bound register-to-pad propagation plus a 2 ns external
+# allowance to 10 ns, excluding irrelevant clock-tree insertion. RGB/sync are
+# held for 40 ns. There is no external synchronous hold requirement.
+set_output_delay -clock ClkPort -max 2.0 [all_outputs]
+set_output_delay -clock ClkPort -min 0.0 [all_outputs]
+set_max_delay 10.0 -datapath_only -from [get_clocks ClkPort] -to [all_outputs]
 set_property CFGBVS VCCO [current_design]
 set_property CONFIG_VOLTAGE 3.3 [current_design]

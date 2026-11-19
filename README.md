@@ -16,9 +16,9 @@ Build outputs, installed/downloaded simulator binaries, and cached browser pages
 
 ## Current checkpoint
 
-The implementation and testbenches are now Verilog-2001. QuestaSim (`scripts/simulate_questasim.ps1`, `-vlog01compat`) and Icarus (`scripts/simulate_icarus.sh` / `simulate_icarus.ps1`, `-g2001`) compile all RTL plus `sim/*_tb.v`, then run gameplay, input, and video checks (50/10/8 assertions in the respective testbenches). The video test checks a complete 800x525 raster, 640x480 visible area, sync timing, one game tick per frame, blanking, and 307,200 rendered pixels; it writes `sample_screen.ppm` in `build/questasim` or `build/icarus`. A portable preview and results summary are in [docs/verification](docs/verification/simulation_results.md).
+The implementation and testbenches are Verilog-2001. ModelSim SE-64 10.6e (`scripts/simulate_questasim.ps1`, `-vlog01compat`) passes gameplay, input, video, and display I/O checks (51/11/22/1,155 checks). The video test checks a complete 800x525 raster, 640x480 visible area, sync timing, one game tick per frame, blanking, and 307,200 rendered pixels; it writes `sample_screen.ppm` in `build/questasim`. A portable preview and results summary are in [docs/verification](docs/verification/simulation_results.md). Icarus scripts remain available but were not used for the November 18 verification.
 
-Vivado synthesis, timing, bitstream generation, and physical-board testing remain unverified for this checkpoint. Troop balance and physical controls still need board testing.
+Vivado 2026.1 synthesis, implementation, timing checks, and bitstream generation pass with the November 18 timing fixes. Final setup/hold slack is +0.010/+0.050 ns, with zero design-rule violations. See the [implementation results](docs/verification/vivado_build_results.md) for constraints, changes, and reproducibility. Troop balance, physical controls, and monitor operation still need board testing.
 
 ## Agreed rules
 
@@ -68,7 +68,9 @@ Movement is one pixel per movement interval across a 360-pixel field. Melee rang
 
 Module interfaces carry flattened vectors: slot `i` occupies `progress[i*9 +: 9]`, `health[i*8 +: 8]`, and `kind[i*2 +: 2]`. Player `p` occupies `elixir[p*4 +: 4]`, lane selection `[p*3 +: 3]`, and card/error selection `[p*2 +: 2]`. These indexed slices are standard Verilog-2001.
 
-All logic uses the board's 100 MHz clock. A pixel enable every four cycles generates 640x480 VGA with 800x525 total timing at 25 MHz (about 59.52 frames/second). One game tick at the beginning of vertical blank updates the complete game state before the next visible frame. Consequently 60 game ticks take about 1.008 seconds; the nominal three-minute timeout is about 181.44 seconds. There are no logic-generated clocks or vendor IP dependencies.
+All logic uses the board's 100 MHz clock. A pixel enable every four cycles generates 640x480 VGA with 800x525 total timing at 25 MHz (about 59.52 frames/second). Renderer snapshots, raster counters, and RGB output registers share this enable. Only their pixel data paths receive a four-cycle timing constraint; control, reset, and game logic retain the 10 ns requirement. One game tick at the beginning of vertical blank updates the complete game state before the next visible frame. Consequently 60 game ticks take about 1.008 seconds; the nominal three-minute timeout is about 181.44 seconds. There are no logic-generated clocks or vendor IP dependencies.
+
+`game_core` caches lane contact between updates and requires at least one idle system-clock edge between game ticks. The board supplies 1,680,000 system clocks per frame. The cached contact logic matches the original combinational behavior under this interface contract. Seven-segment outputs are registered, adding one 10 ns clock of display latency.
 
 - `game_core.v`: idle/play/game-over controller, ten unit slots, combat, elixir, deployment, scoring.
 - `input_filter.v`, `command_capture.v`: synchronizers, stable-input filtering, independent request snapshots.
@@ -99,7 +101,7 @@ QuestaSim (`-QuestaBin` if `vsim.exe` is not on PATH):
 .\scripts\simulate_questasim.ps1
 ```
 
-Each script builds `rtl/*.v`, `rtl/sprites/*.v` when present, and `sim/game_core_tb.v`, `sim/input_tb.v`, `sim/video_tb.v`, then requires a `PASS <test>:` line in each log. Each player has one queued request snapshot; if multiple filtered deployment toggles arrive before one game tick, the latest request replaces the earlier pending request.
+Each script builds `rtl/*.v`, `rtl/sprites/*.v` when present, and `sim/*_tb.v`, then requires a `PASS <test>:` line for gameplay, input, video, and display I/O in the respective logs. Each player has one queued request snapshot; if multiple filtered deployment toggles arrive before one game tick, the latest request replaces the earlier pending request.
 
 ## Vivado build and program
 
@@ -107,7 +109,7 @@ Each script builds `rtl/*.v`, `rtl/sprites/*.v` when present, and `sim/game_core
 .\scripts\build.ps1
 ```
 
-Batch-runs `scripts/build.tcl`: synthesis through `write_bitstream`, timing/DRC gates, output `build/royale_top.bit` and reports under `build/`. Override tool location with `-VivadoBin` if needed.
+Batch-runs `scripts/build.tcl`: synthesis through `write_bitstream`, timing/DRC gates, output `build/royale_top.bit` and reports under `build/`. The script locates Vivado on PATH or under common AMD/Xilinx installation directories; override with `-VivadoBin` if needed. `constraints/pixel_timing.tcl` must be sourced after synthesis, as the build script does, so its scoped register constraints can be resolved. Output propagation is bounded separately for the asynchronous board LEDs, seven-segment display, and VGA interface; these peripherals have no external 100 MHz capture clock.
 
 ```powershell
 .\scripts\program.ps1

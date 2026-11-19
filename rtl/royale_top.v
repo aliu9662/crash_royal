@@ -51,6 +51,16 @@ module royale_top (
     wire pixel_enable, game_tick, bright, raw_hSync, raw_vSync;
     wire [9:0] hCount, vCount;
     wire [11:0] rgb;
+    // Renderer inputs change only on pixel-enable edges, like the raster and
+    // RGB output registers. This gives the pixel logic its full 40 ns period.
+    reg [1:0] view_state, view_winner;
+    reg [9:0] view_alive;
+    reg [89:0] view_progress;
+    reg [79:0] view_health;
+    reg [19:0] view_kind;
+    reg [7:0] view_elixir;
+    reg [5:0] view_lane;
+    reg [3:0] view_card, view_error;
     wire [7:0] an;
     wire [6:0] segment;
     wire dp_seg;
@@ -77,10 +87,23 @@ module royale_top (
     display_controller dc(
         .clk(ClkPort),.reset(reset),.pixel_enable(pixel_enable),.game_tick(game_tick),
         .bright(bright),.hSync(raw_hSync),.vSync(raw_vSync),.hCount(hCount),.vCount(vCount));
+    always @(posedge ClkPort) begin
+        if (reset) begin
+            view_state <= IDLE; view_winner <= NO_WINNER;
+            view_alive <= 0; view_progress <= 0; view_health <= 0;
+            view_kind <= 0; view_elixir <= 0; view_lane <= 0;
+            view_card <= 0; view_error <= 0;
+        end else if (pixel_enable) begin
+            view_state <= state; view_winner <= winner;
+            view_alive <= alive; view_progress <= progress; view_health <= health;
+            view_kind <= kind; view_elixir <= elixir; view_lane <= lane;
+            view_card <= card; view_error <= error_code;
+        end
+    end
     vga_bitchange vbc(
-        .clk(ClkPort),.bright(bright),.hCount(hCount),.vCount(vCount),.state(state),.winner(winner),
-        .alive(alive),.progress(progress),.health(health),.kind(kind),.elixir(elixir),
-        .selected_lane(lane),.selected_card(card),.error_code(error_code),.rgb(rgb));
+        .clk(ClkPort),.bright(bright),.hCount(hCount),.vCount(vCount),.state(view_state),.winner(view_winner),
+        .alive(view_alive),.progress(view_progress),.health(view_health),.kind(view_kind),.elixir(view_elixir),
+        .selected_lane(view_lane),.selected_card(view_card),.error_code(view_error),.rgb(rgb));
     // Register color and sync together so the displayed pixel stays aligned.
     always @(posedge ClkPort) begin
         if (reset) begin

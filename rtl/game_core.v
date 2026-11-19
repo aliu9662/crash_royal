@@ -30,7 +30,22 @@ module game_core #(
     reg [79:0] damage;
     reg [4:0] in_range;
     reg p1_goal, p2_goal;
-    integer lane, slot, player, target, separation;
+    integer lane, slot, player, target;
+
+    // Game ticks must have at least one idle system-clock edge between them.
+    // The board supplies one tick per video frame. Cache contact during that
+    // idle time to keep distance arithmetic out of the attack/death/goal path.
+    genvar contact_lane;
+    generate for (contact_lane = 0; contact_lane < LANES; contact_lane = contact_lane + 1) begin: contact
+        wire [9:0] progress_sum;
+        assign progress_sum = {1'b0, progress[contact_lane*9 +: 9]} +
+                              {1'b0, progress[(contact_lane+LANES)*9 +: 9]};
+        always @(posedge clk)
+            if (reset) in_range[contact_lane] <= 0;
+            else in_range[contact_lane] <= alive[contact_lane] && alive[contact_lane+LANES] &&
+                progress_sum >= FIELD_LENGTH-MELEE_RANGE &&
+                progress_sum <= FIELD_LENGTH+MELEE_RANGE;
+    end endgenerate
 
     // Every attack reads the same pre-tick snapshot. Accumulate damage before
     // applying either player's deaths, so a lethal attack cannot erase a reply.
@@ -40,9 +55,9 @@ module game_core #(
         move_left_n = move_left; attack_left_n = attack_left;
         elixir_n = elixir; error_n = error_code;
         match_age_n = match_age; elixir_age_n = elixir_age;
-        damage = 0; in_range = 0;
+        damage = 0;
         p1_goal = 0; p2_goal = 0;
-        target = 0; separation = 0;
+        target = 0;
         if (state == IDLE && start) begin
             state_n = PLAY; winner_n = NO_WINNER;
             alive_n = 0; progress_n = 0; health_n = 0; kind_n = 0;
@@ -51,11 +66,6 @@ module game_core #(
             match_age_n = 0; elixir_age_n = 0;
         end else if (state == PLAY && game_tick) begin
             match_age_n = match_age + 1;
-            for (lane = 0; lane < LANES; lane = lane + 1) begin
-                separation = FIELD_LENGTH - (progress[(lane)*9 +: 9]) - (progress[(lane+LANES)*9 +: 9]);
-                if (separation < 0) separation = -separation;
-                in_range[lane] = alive[lane] && alive[lane+LANES] && separation <= MELEE_RANGE;
-            end
             for (slot = 0; slot < SLOTS; slot = slot + 1) begin
                 target = (slot < LANES) ? slot + LANES : slot - LANES;
                 if (alive[slot]) begin

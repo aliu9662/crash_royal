@@ -62,17 +62,31 @@ module vga_bitchange (
     endfunction
 
     function automatic ink(input integer px, py, left, top, scale, input [7:0] c);
-        integer col, row;
+        reg [2:0] col, row;
+        reg [4:0] glyph_x, glyph_y;
+        reg [5:0] glyph_index;
         reg [34:0] bits;
         begin
             ink = 1'b0;
             col = 0;
             row = 0;
+            glyph_x = 0;
+            glyph_y = 0;
+            glyph_index = 0;
             bits = glyph(c);
             if (px >= left && px < left + 5 * scale && py >= top && py < top + 7 * scale) begin
-                col = (px - left) / scale;
-                row = (py - top) / scale;
-                ink = bits[34 - row * 5 - col];
+                // All call sites use scales 1, 2, or 3, so a glyph is at most
+                // 15x21 pixels. Clip first, then use bounded unsigned math;
+                // signed 32-bit division here creates a very long pixel path.
+                glyph_x = px - left;
+                glyph_y = py - top;
+                case (scale)
+                    1: begin col = glyph_x[2:0]; row = glyph_y[2:0]; end
+                    2: begin col = glyph_x[3:1]; row = glyph_y[3:1]; end
+                    default: begin col = glyph_x / 5'd3; row = glyph_y / 5'd3; end
+                endcase
+                glyph_index = 6'd34 - (row * 6'd5) - col;
+                ink = bits[glyph_index];
             end
         end
     endfunction
@@ -122,7 +136,9 @@ module vga_bitchange (
         endcase
     end
 
-    integer px, py, lane, slot, cx, cy, text_index, local_x, local_y;
+    integer px, py, lane, slot, cx, cy, local_x, local_y;
+    reg [3:0] text_index;
+    reg [8:0] text_offset;
     reg [7:0] text_char;
 
     always @* begin
@@ -131,6 +147,7 @@ module vga_bitchange (
         cx = 0;
         cy = 0;
         text_index = 0;
+        text_offset = 0;
         text_char = " ";
         local_x = 0;
         local_y = 0;
@@ -199,7 +216,8 @@ module vga_bitchange (
         end
 
         if (py >= 10 && py < 24 && px >= 254 && px < 386) begin
-            text_index = (px - 254) / 12;
+            text_offset = px - 254;
+            text_index = text_offset / 9'd12;
             text_char = TITLE[(10 - text_index) * 8 +: 8];
             if (ink(px, py, 254 + text_index * 12, 10, 2, text_char))
                 rgb = 12'hfff;
@@ -208,12 +226,14 @@ module vga_bitchange (
         if (state != PLAY && px >= 160 && px < 480 && py >= 212 && py < 286) begin
             rgb = 12'h112;
             if (state == IDLE && px >= 190 && px < 450 && py >= 239 && py < 260) begin
-                text_index = (px - 190) / 20;
+                text_offset = px - 190;
+                text_index = text_offset / 9'd20;
                 text_char = READY[(12 - text_index) * 8 +: 8];
                 if (ink(px, py, 190 + text_index * 20, 239, 3, text_char))
                     rgb = 12'hfd4;
             end else if (state == GAME_OVER && px >= 210 && px < 430 && py >= 239 && py < 260) begin
-                text_index = (px - 210) / 20;
+                text_offset = px - 210;
+                text_index = text_offset / 9'd20;
                 case (winner)
                     P1_WIN:  text_char = P1_TEXT[(10 - text_index) * 8 +: 8];
                     P2_WIN:  text_char = P2_TEXT[(10 - text_index) * 8 +: 8];
