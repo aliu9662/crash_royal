@@ -23,6 +23,9 @@ set_property -dict { PACKAGE_PIN U13   IOSTANDARD LVCMOS33 } [get_ports {An7}]
 
 set_property -dict { PACKAGE_PIN C12   IOSTANDARD LVCMOS33 } [get_ports BtnCpuReset]
 set_property -dict { PACKAGE_PIN N17   IOSTANDARD LVCMOS33 } [get_ports {BtnC}]
+set_property -dict { PACKAGE_PIN M18   IOSTANDARD LVCMOS33 } [get_ports {BtnU}]
+set_property -dict { PACKAGE_PIN P17   IOSTANDARD LVCMOS33 } [get_ports {BtnL}]
+set_property -dict { PACKAGE_PIN M17   IOSTANDARD LVCMOS33 } [get_ports {BtnR}]
 
 set_property -dict { PACKAGE_PIN J15   IOSTANDARD LVCMOS33 } [get_ports {Sw[0]}]
 set_property -dict { PACKAGE_PIN L16   IOSTANDARD LVCMOS33 } [get_ports {Sw[1]}]
@@ -75,7 +78,7 @@ set_property -dict { PACKAGE_PIN B12   IOSTANDARD LVCMOS33 } [get_ports { vSync 
 
 set_property -dict { PACKAGE_PIN L13   IOSTANDARD LVCMOS33 } [get_ports {QuadSpiFlashCS}]
 
-set_false_path -from [get_ports {Sw[*] BtnC}] -to [get_cells -hier -filter {NAME =~ */meta_reg*}]
+set_false_path -from [get_ports {Sw[*] BtnC BtnU BtnL BtnR}] -to [get_cells -hier -filter {NAME =~ */meta_reg*}]
 set_false_path -from [get_ports BtnCpuReset]
 # These outputs drive asynchronous LEDs/SSD and analog VGA, with no external
 # 100 MHz capture clock. Bound register-to-pad propagation plus a 2 ns external

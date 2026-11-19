@@ -3,19 +3,21 @@ module input_tb;
     `include "royale_params.vh"
     reg clk = 0;
     always #5 clk = !clk;
-    reg reset = 1, enabled = 0, consume = 0;
-    reg [1:0] toggle = 0;
+    reg reset = 1, clear = 0, enabled = 0, consume = 0;
+    reg [1:0] deploy_button = 0;
+    reg [1:0] selection_valid = 3;
     wire [1:0] pending;
     reg [5:0] lane = 0;
     wire [5:0] request_lane;
     reg [3:0] card = 0;
     wire [3:0] request_card;
+    wire [1:0] request_valid;
     reg [5:0] raw = 0;
     wire [5:0] filtered;
     integer checks = 0;
-    command_capture dut(.clk(clk),.reset(reset),.enabled(enabled),.consume(consume),
-        .toggle(toggle),.lane(lane),.card(card),.pending(pending),
-        .request_lane(request_lane),.request_card(request_card));
+    command_capture dut(.clk(clk),.reset(reset),.clear(clear),.enabled(enabled),.consume(consume),
+        .deploy_button(deploy_button),.lane(lane),.card(card),.selection_valid(selection_valid),
+        .pending(pending),.request_lane(request_lane),.request_card(request_card),.request_valid(request_valid));
     input_filter #(.WIDTH(6),.STABLE_CYCLES(4)) filter_dut(.clk(clk),.reset(reset),.raw(raw),.value(filtered));
     task automatic check(input condition, input [1023:0] message);
         begin
@@ -30,21 +32,22 @@ module input_tb;
     endtask
     initial begin
         cycles(3); reset = 0;
-        toggle = 3; cycles(2);
+        deploy_button = 3; cycles(2);
         enabled = 1; cycles(2);
-        check(pending == 0,"starting with raised switches does not deploy");
-        lane[(0)*3 +: 3] = 4; card[(0)*2 +: 2] = 3; toggle[0] = 0; cycles(1);
-        check(pending == 1 && request_lane[(0)*3 +: 3] == 4 && request_card[(0)*2 +: 2] == 3,"falling toggle captures a request");
+        check(pending == 0,"starting with held buttons does not deploy");
+        deploy_button = 0; cycles(1);
+        lane[(0)*3 +: 3] = 3; card[(0)*2 +: 2] = 3; deploy_button[0] = 1; cycles(1);
+        check(pending == 1 && request_lane[(0)*3 +: 3] == 3 && request_card[(0)*2 +: 2] == 3 && request_valid[0],"P1 button captures a valid request");
         lane[(0)*3 +: 3] = 1; card[(0)*2 +: 2] = 0; cycles(2);
-        check(request_lane[(0)*3 +: 3] == 4 && request_card[(0)*2 +: 2] == 3,"request retains selection snapshot");
+        check(request_lane[(0)*3 +: 3] == 3 && request_card[(0)*2 +: 2] == 3,"request retains selection snapshot");
         consume = 1; cycles(1); consume = 0; cycles(2);
-        check(pending == 0,"held toggle cannot repeat deployment");
-        lane[(0)*3 +: 3] = 2; card[(0)*2 +: 2] = ICE_GOLEM; toggle[0] = 0; cycles(1);
-        toggle[0] = 1; cycles(1);
-        check(pending == 1 && request_lane[(0)*3 +: 3] == 2 && request_card[(0)*2 +: 2] == ICE_GOLEM,"rising toggle captures a request");
-        toggle = ~toggle; cycles(1);
+        check(pending == 0,"held button cannot repeat deployment");
+        lane[(0)*3 +: 3] = 2; card[(0)*2 +: 2] = ICE_GOLEM; deploy_button[0] = 0; cycles(1);
+        deploy_button[0] = 1; cycles(1);
+        check(pending == 1 && request_lane[(0)*3 +: 3] == 2 && request_card[(0)*2 +: 2] == ICE_GOLEM,"next press captures a request");
+        deploy_button = 0; cycles(1); deploy_button = 3; cycles(1);
         check(pending == 3,"both independent controllers capture together");
-        consume = 1; toggle[0] = ~toggle[0]; lane[(0)*3 +: 3] = 2; cycles(1); consume = 0;
+        consume = 1; deploy_button[0] = 0; cycles(1); deploy_button[0] = 1; lane[(0)*3 +: 3] = 2; cycles(1); consume = 0;
         check(pending == 1 && request_lane[(0)*3 +: 3] == 2,"request at consumption edge survives for next tick");
         enabled = 0; cycles(1);
         check(pending == 0,"idle/game over discards queued deployment");

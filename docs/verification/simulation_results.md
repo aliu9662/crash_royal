@@ -1,8 +1,9 @@
-# ModelSim verification checkpoint
+# Simulation verification checkpoint
 
 ## November 18, 2026 revalidation
 
-Reviewed partner commit `02b08d7` (V1), with local timing fixes. All RTL and testbenches compile as Verilog-2001 with ModelSim SE-64 10.6e (`-vlog01compat`).
+Andy's timing commit `4c6a51d` passed the following ModelSim checks before the
+four-lane/multi-troop feature merge:
 
 | Testbench | Result |
 | --- | --- |
@@ -19,22 +20,23 @@ After caching lane contact between game ticks, a separate ModelSim comparison ag
 
 Current logs and the sample frame are under `build/questasim/`. The one-time equivalence logs are under `build/renderer_equivalence/` and `build/core_equivalence/`. FPGA implementation results are recorded separately after the Vivado build completes.
 
-## Original November 12 checkpoint
+## Merged feature verification
 
-Verified November 12, 2026 using ModelSim SE-64 10.6e.
-
-All RTL and testbenches compiled with `vlog -vlog01compat`, zero compilation errors and warnings. No SystemVerilog mode was enabled.
+The merged four-lane implementation was verified using Icarus Verilog in
+Verilog-2001 mode:
 
 | Testbench | Result | Coverage |
 | --- | --- | --- |
-| `game_core_tb` | 50 checks passed | Deployment, elixir, occupied/invalid lanes, simultaneous combat, Giant passing, lane isolation, scoring, draws, timeout, reset |
-| `input_tb` | 10 checks passed | Both toggle edges, input filtering, independent requests, selection snapshots, tick-edge requests |
-| `video_tb` | 8 checks passed | Full 800x525 raster, 640x480 active area, horizontal/vertical sync, frame tick, blanking, title/draw output |
+| `game_core_tb` | 70 checks passed | Per-card elixir rejection, multiple card types per lane, duplicate prevention, combat, slower movement, scoring, restart |
+| `input_tb` | 11 checks passed | Button edges, input filtering, independent requests, selection snapshots, tick-edge requests |
+| `video_tb` | 26 checks passed | Full raster/sync timing, sprite/grass ROM output, numeric elixir, normalized health, timer, overlays |
 
 The video test additionally checked all 307,200 pixels in the sample frame for unknown values. The attached image is a test fixture rendered by the hardware renderer; it is not a physical-board photograph or a recorded play session.
 
-![ModelSim-rendered sample frame](modelsim_sample_screen.png)
+![Current simulated sample frame](current_sample_screen.png)
 
-This checkpoint predates the EE354 skeleton renames (`display_controller.v`, `vga_bitchange.v`, `royale_params.vh`). Reproduce from the repository root with `./scripts/simulate_questasim.ps1` (override `-QuestaBin` if needed; requires a license) or `bash scripts/simulate_icarus.sh`. Logs and the PPM image go into `build/questasim/` or `build/icarus/`.
+Reproduce from the repository root with `bash scripts/simulate_icarus.sh`, or use
+`./scripts/simulate_questasim.ps1` when QuestaSim is available. Logs and the PPM image
+go into `build/icarus/` or `build/questasim/`.
 
-Synthesis, implementation timing, bitstream generation, and physical-board behavior are not covered by these simulation results.
+The merged feature build has not yet been rerun through Vivado implementation.

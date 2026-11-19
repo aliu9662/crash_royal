@@ -6,7 +6,7 @@ First playable hardware prototype for the Nexys A7-100T (`xc7a100tcsg324-1`), wr
 
 - `rtl/`, `sim/`, `scripts/`, and `constraints/`: current Verilog implementation and build/test entry points.
 - `instructions/`: all 17 supplied/downloaded course instruction and reference files, including the VGA starter archives and tutorial videos.
-- `docs/pitch/`: the saved pitch and earlier presentation versions. These precede the five-lane/four-card decisions; the rules below describe the current implementation.
+- `docs/pitch/`: the saved pitch and earlier presentation versions; the rules below describe the current implementation.
 - `docs/design_discussion.txt`: early design discussion, retained as historical context.
 - `docs/reference/`: board reference image.
 - `docs/verification/`: ModelSim results and the rendered sample screen.
@@ -18,15 +18,23 @@ Build outputs, installed/downloaded simulator binaries, and cached browser pages
 
 The implementation and testbenches are Verilog-2001. ModelSim SE-64 10.6e (`scripts/simulate_questasim.ps1`, `-vlog01compat`) passes gameplay, input, video, and display I/O checks (51/11/22/1,155 checks). The video test checks a complete 800x525 raster, 640x480 visible area, sync timing, one game tick per frame, blanking, and 307,200 rendered pixels; it writes `sample_screen.ppm` in `build/questasim`. A portable preview and results summary are in [docs/verification](docs/verification/simulation_results.md). Icarus scripts remain available but were not used for the November 18 verification.
 
-Vivado 2026.1 synthesis, implementation, timing checks, and bitstream generation pass with the November 18 timing fixes. Final setup/hold slack is +0.010/+0.050 ns, with zero design-rule violations. See the [implementation results](docs/verification/vivado_build_results.md) for constraints, changes, and reproducibility. Troop balance, physical controls, and monitor operation still need board testing.
+Vivado 2026.1 synthesis, implementation, timing checks, and bitstream generation passed
+for Andy's November 18 timing commit. The merged four-lane, multi-troop sprite build
+still requires a fresh Vivado timing run. See the
+[implementation results](docs/verification/vivado_build_results.md) for the prior
+baseline. Troop balance, physical controls, and monitor operation still need board testing.
 
 ## Agreed rules
 
-- Five independent lanes, one living unit per player per lane (ten slots total).
+- Four independent lanes. Each player may have one living copy of each card in each lane
+  (up to four friendly troops per lane and 32 fixed troop slots total).
 - P1 starts at the bottom end line and advances upward. P2 starts at the top and advances downward.
-- Giant walks through opponents and never attacks. Other troops stop and attack an opponent within melee range, including a Giant passing them.
+- Giant walks through opponents and never attacks. Other troops stop and attack the
+  nearest opponent in their lane within melee range, including a Giant passing them.
 - No lane changes, cross-lane damage, spells, deck cycling, friendly stacking, or special abilities.
-- All four cards are directly selectable. Invalid lanes, occupied friendly lanes, and insufficient elixir reject deployment without spending elixir.
+- All four cards are directly selectable. A duplicate of the same card in the same
+  friendly lane, an invalid one-hot selection, or insufficient elixir rejects deployment
+  without spawning a troop or spending elixir. Different card types may share a lane.
 - Each tick resolves attacks simultaneously, applies deaths, moves surviving troops, and checks touchdowns. Both players scoring in one tick is a draw. Damage on the scoring tick can kill a unit before it scores.
 - Deployment follows the existing-unit update. New troops wait until the next tick before acting. Both players can deploy in the same tick.
 - Touchdown means the unit's center reaches the opposing end line. A unit spawns with its center on its own end line.
@@ -35,21 +43,24 @@ Vivado 2026.1 synthesis, implementation, timing checks, and bitstream generation
 
 ## Controls
 
-Each player's six switches form an independent controller. The button pad is no longer shared for gameplay.
+Each player's eight switches form an independent one-hot controller.
 
-| Action | P1 (right switch group) | P2 (left switch group) |
+| Action | P1 (right side) | P2 (left side) |
 | --- | --- | --- |
-| Lane code, 000 through 100 = lanes 1 through 5 | SW2:SW0 | SW10:SW8 |
-| Card code | SW4:SW3 | SW12:SW11 |
-| Deploy once on either toggle direction | SW5 | SW13 |
+| Lane 1–4 (exactly one switch on) | SW3:SW0 | SW11:SW8 |
+| Giant / Ice Golem / Knight / Mini P.E.K.K.A (exactly one on) | SW7:SW4 | SW15:SW12 |
+| Deploy | Right button | Left button |
 
-Card codes: `00` Giant, `01` Ice Golem, `10` Knight, `11` Mini P.E.K.K.A. Lane codes 101, 110, and 111 are invalid. Set lane/card first, then toggle deploy. SW6, SW7, SW14, and SW15 are unused.
+Set exactly one lane switch and one card switch, then press that player's deploy button. Zero or multiple switches in either group reject deployment.
 
-- Center button: start a match from the title screen. After game over, use CPU RESET, then center to start again.
+- Center button: start a match from the title screen.
+- Up button: immediately restart the match from any state.
 - CPU RESET: return to title. Current deploy-switch positions become the baseline, so resetting/starting cannot deploy a troop accidentally.
 - Seven-segment display: P2 elixir on the left pair, P1 elixir on the right pair.
-- LEDs 4:0 and 12:8: P1/P2 occupied lanes. LEDs 5/13: rejected deployment. LEDs 6/14: valid lane selection. LED7: match running. LED15: game over.
-- VGA shows lane selection, elixir bars, card letters G/I/K/M, unit health bars, and title/winner/draw overlays. Error codes next to each player are 1 = invalid lane, 2 = occupied lane, 3 = insufficient elixir. An error persists until that player's next deployment request or reset.
+- LEDs 3:0 and 11:8: P1/P2 lanes containing at least one troop. LEDs 4/12:
+  rejected deployment. LEDs 5/13: valid lane-and-card selection. LED7: match running.
+  LED15: game over.
+- VGA shows sprite troops, lane selection, numeric elixir plus bars, normalized unit health bars, elapsed time, a tiled grass arena, and title/winner/draw overlays. Error codes next to each player are 1 = invalid selection, 2 = occupied lane, 3 = insufficient elixir.
 
 ## Initial balance values
 
@@ -57,29 +68,32 @@ These are adjustable starting values, not final balance. Stats are centralized i
 
 | Card | Cost | HP | Damage | Move every | Attack every |
 | --- | --- | --- | --- | --- | --- |
-| Giant | 5 | 28 | 0 | 4 ticks | never |
-| Ice Golem | 2 | 12 | 1 | 3 ticks | 45 ticks |
-| Knight | 3 | 16 | 2 | 2 ticks | 30 ticks |
-| Mini P.E.K.K.A | 4 | 12 | 6 | 2 ticks | 24 ticks |
+| Giant | 5 | 28 | 0 | 8 ticks | never |
+| Ice Golem | 2 | 12 | 1 | 6 ticks | 45 ticks |
+| Knight | 3 | 16 | 2 | 4 ticks | 30 ticks |
+| Mini P.E.K.K.A | 4 | 12 | 6 | 4 ticks | 24 ticks |
 
 Movement is one pixel per movement interval across a 360-pixel field. Melee range is 18 pixels between centers. Attack cooldowns count down continuously, allowing an immediate attack on first contact when ready. Giant can be attacked from either side while within range.
 
 ## Structure and timing
 
-Module interfaces carry flattened vectors: slot `i` occupies `progress[i*9 +: 9]`, `health[i*8 +: 8]`, and `kind[i*2 +: 2]`. Player `p` occupies `elixir[p*4 +: 4]`, lane selection `[p*3 +: 3]`, and card/error selection `[p*2 +: 2]`. These indexed slices are standard Verilog-2001.
+Module interfaces carry flattened vectors: slot `i` occupies `progress[i*9 +: 9]`, `health[i*8 +: 8]`, and `kind[i*2 +: 2]`. Player `p` occupies `elixir[p*4 +: 4]`, lane selection `[p*3 +: 3]`, and card/error selection `[p*2 +: 2]`.
 
 All logic uses the board's 100 MHz clock. A pixel enable every four cycles generates 640x480 VGA with 800x525 total timing at 25 MHz (about 59.52 frames/second). Renderer snapshots, raster counters, and RGB output registers share this enable. Only their pixel data paths receive a four-cycle timing constraint; control, reset, and game logic retain the 10 ns requirement. One game tick at the beginning of vertical blank updates the complete game state before the next visible frame. Consequently 60 game ticks take about 1.008 seconds; the nominal three-minute timeout is about 181.44 seconds. There are no logic-generated clocks or vendor IP dependencies.
 
-`game_core` caches lane contact between updates and requires at least one idle system-clock edge between game ticks. The board supplies 1,680,000 system clocks per frame. The cached contact logic matches the original combinational behavior under this interface contract. Seven-segment outputs are registered, adding one 10 ns clock of display latency.
+`game_core` caches each troop's nearest in-range opponent between updates and requires
+at least one idle system-clock edge between game ticks. The board supplies 1,680,000
+system clocks per frame. Seven-segment outputs are registered, adding one 10 ns clock
+of display latency.
 
-- `game_core.v`: idle/play/game-over controller, ten unit slots, combat, elixir, deployment, scoring.
+- `game_core.v`: idle/play/game-over controller, 32 card/lane slots, combat, elixir, deployment, scoring.
 - `input_filter.v`, `command_capture.v`: synchronizers, stable-input filtering, independent request snapshots.
 - `display_controller.v`: 640×480 VGA timing (100 MHz, 1-of-4 pixel enable), `bright`/`hSync`/`vSync`/`hCount`/`vCount`, one `game_tick` per frame.
 - `vga_bitchange.v`: arena paint, unit letters, HUD (`localparam USE_SPRITES` sprite hook).
 - `seven_segment.v`, `royale_top.v`: board display and integration.
 - `constraints/nexys_a7_100t.xdc`: board pin assignments (EE354 port names on `royale_top`), derived from the official [Digilent master constraints](https://github.com/Digilent/digilent-xdc/blob/master/Nexys-A7-100T-Master.xdc).
 
-`royale_top` ports match the XDC: `ClkPort`, active-low `BtnCpuReset`, `BtnC` (start), `Sw[15:0]`, `Ld[15:0]`, `vgaR`/`vgaG`/`vgaB[3:0]`, `hSync`, `vSync`, `An0`–`An7`, `Ca`–`Cg`, `Dp`, and `QuadSpiFlashCS` (tied high in RTL).
+`royale_top` ports match the XDC: `ClkPort`, active-low `BtnCpuReset`, `BtnC`, `BtnU`, `BtnL`, `BtnR`, `Sw[15:0]`, `Ld[15:0]`, VGA, seven-segment, and `QuadSpiFlashCS`.
 
 ## Simulation
 
@@ -101,7 +115,10 @@ QuestaSim (`-QuestaBin` if `vsim.exe` is not on PATH):
 .\scripts\simulate_questasim.ps1
 ```
 
-Each script builds `rtl/*.v`, `rtl/sprites/*.v` when present, and `sim/*_tb.v`, then requires a `PASS <test>:` line for gameplay, input, video, and display I/O in the respective logs. Each player has one queued request snapshot; if multiple filtered deployment toggles arrive before one game tick, the latest request replaces the earlier pending request.
+Each script builds `rtl/*.v`, `rtl/sprites/*.v`, and `sim/*_tb.v`, then requires a
+`PASS <test>:` line for gameplay, input, video, and display I/O. Each player has one
+queued request snapshot; the latest filtered deploy-button press replaces an earlier
+pending request.
 
 ## Vivado build and program
 
@@ -121,6 +138,6 @@ For persistent configuration flash, `QuadSpiFlashCS` is held high so gameplay do
 
 ## Sprite handoff
 
-Default graphics use colored boxes and card letters (`USE_SPRITES = 0` in `vga_bitchange.v`). For EE354 block-RAM ROMs, see `rtl/sprites/README.md`. Convert art with `tools/ee354_optimized_sprite_script.py`: edit the driver to call `generate("giant.png")` or `generate("name.png", rem_x, rem_y)` to mask a background pixel. The script writes `<basename>_12_bit_rom.v` (`module <basename>_rom`); place copies in `rtl/sprites/` (e.g. `giant_rom.v`). Recommended size is 20×20. Set `USE_SPRITES = 1` and instantiate ROMs at the `// SPRITE HOOK`; treat `12'h000` as transparent.
+Character and grass PNGs are under `rtl/sprites/png`; generated synchronous ROMs are under `rtl/sprites`. Regenerate them with `python3 tools/ee354_optimized_sprite_script.py image.png --output-dir rtl/sprites/png --size 20`. See `rtl/sprites/README.md` for sources and details.
 
 The VGA archive in `instructions/` was reviewed as a reference; this implementation uses a single clock and explicit resets rather than the archive's cascaded clock dividers. Hardware operation and gameplay balance still require a physical-board playtest.

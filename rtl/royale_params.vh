@@ -1,7 +1,9 @@
 // Include inside each module; Verilog-2001 constants and functions.
 // No global guard: each module needs its own local definitions.
-    localparam integer LANES = 5;
-    localparam integer SLOTS = 10;
+    localparam integer LANES = 4;
+    localparam integer CARDS = 4;
+    localparam integer SLOTS_PER_PLAYER = LANES * CARDS;
+    localparam integer SLOTS = 2 * SLOTS_PER_PLAYER;
     localparam integer FIELD_LENGTH = 360;
     localparam integer MELEE_RANGE = 18;
     localparam [1:0] GIANT = 0, ICE_GOLEM = 1, KNIGHT = 2, MINI_PEKKA = 3;
@@ -35,9 +37,9 @@
     endfunction
     function automatic [5:0] move_period(input [1:0] card);
         case (card)
-            GIANT: move_period = 4;
-            ICE_GOLEM: move_period = 3;
-            default: move_period = 2;
+            GIANT: move_period = 8;
+            ICE_GOLEM: move_period = 6;
+            default: move_period = 4;
         endcase
     endfunction
     function automatic [5:0] attack_period(input [1:0] card);

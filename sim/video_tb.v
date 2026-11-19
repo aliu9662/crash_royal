@@ -11,18 +11,19 @@ module video_tb;
     reg draw_visible = 1;
     reg [9:0] draw_x = 0, draw_y = 0;
     reg [1:0] state = PLAY, winner = 0;
-    reg [9:0] alive = 0;
-    reg [89:0] progress = 0;
-    reg [79:0] health = 0;
-    reg [19:0] kind = 0;
+    reg [31:0] alive = 0;
+    reg [287:0] progress = 0;
+    reg [255:0] health = 0;
+    reg [63:0] kind = 0;
     reg [7:0] elixir = {4'd7,4'd5};
     reg [5:0] selected_lane = {3'd3,3'd1};
     reg [3:0] selected_card = {MINI_PEKKA,GIANT}, error_code = 0;
+    reg [15:0] elapsed_ticks = 16'd3720;
     wire [11:0] rgb;
     vga_bitchange renderer(.clk(clk),.bright(draw_visible),.hCount(draw_x),.vCount(draw_y),
         .state(state),.winner(winner),.alive(alive),.progress(progress),.health(health),
         .kind(kind),.elixir(elixir),.selected_lane(selected_lane),.selected_card(selected_card),
-        .error_code(error_code),.rgb(rgb));
+        .error_code(error_code),.elapsed_ticks(elapsed_ticks),.rgb(rgb));
     integer pixels = 0, active_pixels = 0, low_h = 0, low_v = 0, ticks = 0;
     integer cycles_since_pixel = 0, checks = 0, fd, xx, yy;
     task automatic check(input condition, input [1023:0] message);
@@ -65,9 +66,9 @@ module video_tb;
         check(ticks == 1,"one game update per frame");
 
         alive[0] = 1; kind[(0)*2 +: 2] = GIANT; progress[(0)*9 +: 9] = 160; health[(0)*8 +: 8] = 24;
-        alive[5] = 1; kind[(5)*2 +: 2] = KNIGHT; progress[(5)*9 +: 9] = 178; health[(5)*8 +: 8] = 12;
-        alive[2] = 1; kind[(2)*2 +: 2] = ICE_GOLEM; progress[(2)*9 +: 9] = 70; health[(2)*8 +: 8] = 12;
-        alive[8] = 1; kind[(8)*2 +: 2] = MINI_PEKKA; progress[(8)*9 +: 9] = 95; health[(8)*8 +: 8] = 12;
+        alive[18] = 1; kind[(18)*2 +: 2] = KNIGHT; progress[(18)*9 +: 9] = 178; health[(18)*8 +: 8] = 12;
+        alive[9] = 1; kind[(9)*2 +: 2] = ICE_GOLEM; progress[(9)*9 +: 9] = 70; health[(9)*8 +: 8] = 12;
+        alive[31] = 1; kind[(31)*2 +: 2] = MINI_PEKKA; progress[(31)*9 +: 9] = 95; health[(31)*8 +: 8] = 12;
         draw_visible = 0; #1;
         check(rgb == 0,"blanking always outputs black");
         draw_visible = 1;
@@ -82,14 +83,22 @@ module video_tb;
             end
         end
         $fclose(fd);
-        draw_x = 126; draw_y = 278; #1;
+        draw_x = 116; draw_y = 278; repeat (2) @(posedge clk); #1;
         check(rgb == 12'h38f,"play state paints a P1 unit body");
         draw_x = 130; draw_y = 456; #1;
         check(rgb == 12'hc5e,"elixir bar width follows tank value");
-        draw_x = 180; draw_y = 435; #1;
+        draw_x = 240; draw_y = 452; #1;
+        check(rgb == 12'hfff,"numeric elixir count is visible");
+        draw_x = 383; draw_y = 347; #1;
+        check(rgb == 12'h5e6,"full-health low-HP card receives a full-width health bar");
+        draw_x = 220; draw_y = 435; #1;
         check(rgb == 12'hfd4,"P1 lane highlight tracks selected lane");
-        error_code[(0)*2 +: 2] = BAD_LANE; draw_x = 282; draw_y = 454; #1;
+        error_code[(0)*2 +: 2] = BAD_LANE; draw_x = 296; draw_y = 452; #1;
         check(rgb == 12'hf45,"deployment error code is visible");
+        draw_x = 580; draw_y = 10; #1;
+        check(rgb == 12'hfff,"top-right elapsed timer is visible");
+        draw_x = 100; draw_y = 100; repeat (2) @(posedge clk); #1;
+        check(rgb != 12'h322 && rgb != 12'h223 && rgb != 12'h000,"arena uses the grass tile ROM");
         error_code = 0; state = IDLE; draw_x = 193; draw_y = 240; #1;
         check(rgb == 12'hfd4,"idle overlay paints the start prompt");
         state = GAME_OVER; winner = P1_WIN; draw_x = 213; draw_y = 249; #1;
@@ -101,5 +110,5 @@ module video_tb;
         $display("PASS video_tb: %0d checks, full raster and 307200 rendered pixels",checks);
         $finish;
     end
-    initial begin #20000000; begin $display("video test watchdog"); $finish; end end
+    initial begin #50000000; begin $display("video test watchdog"); $finish; end end
 endmodule

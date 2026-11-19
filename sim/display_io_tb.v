@@ -19,14 +19,15 @@ module display_io_tb;
     reg sample_reset, sample_enable, sample_hs, sample_vs;
     reg [11:0] sample_rgb, previous_rgb;
     reg [1:0] previous_sync;
-    reg [325:0] previous_view, sample_live;
+    reg [681:0] previous_view, sample_live;
     reg [19:0] previous_raster;
-    wire [325:0] view_bus = {board.view_state, board.view_winner, board.view_alive,
+    wire [681:0] view_bus = {board.view_state, board.view_winner, board.view_alive,
         board.view_progress, board.view_health, board.view_kind, board.view_elixir,
-        board.view_lane, board.view_card, board.view_error};
+        board.view_lane, board.view_card, board.view_error, board.view_elapsed_ticks};
 
     seven_segment dut(.clk(clk),.reset(reset),.elixir(elixir),.an(an),.segment(segment),.dp(dp));
-    royale_top board(.ClkPort(clk),.BtnCpuReset(board_reset_n),.BtnC(1'b0),.Sw(16'b0),
+    royale_top board(.ClkPort(clk),.BtnCpuReset(board_reset_n),.BtnC(1'b0),
+        .BtnU(1'b0),.BtnL(1'b0),.BtnR(1'b0),.Sw(16'b0),
         .Ld(led),.vgaR(red),.vgaG(green),.vgaB(blue),.hSync(hs),.vSync(vs),
         .An0(board_an[0]),.An1(board_an[1]),.An2(board_an[2]),.An3(board_an[3]),
         .An4(board_an[4]),.An5(board_an[5]),.An6(board_an[6]),.An7(board_an[7]),
@@ -70,7 +71,7 @@ module display_io_tb;
         previous_view = view_bus;
         previous_raster = {board.hCount,board.vCount};
         sample_live = {board.state,board.winner,board.alive,board.progress,board.health,
-            board.kind,board.elixir,board.lane,board.card,board.error_code};
+            board.kind,board.elixir,board.lane,board.card,board.error_code,board.elapsed_ticks};
         #1;
         if (sample_reset) begin
             check({red,green,blue} === 12'd0,"reset blanks VGA immediately");

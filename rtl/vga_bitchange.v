@@ -10,20 +10,20 @@ module vga_bitchange (
     input  wire [9:0]  vCount,
     input  wire [1:0]  state,
     input  wire [1:0]  winner,
-    input  wire [9:0]  alive,
-    input  wire [89:0] progress,
-    input  wire [79:0] health,
-    input  wire [19:0] kind,
+    input  wire [31:0]  alive,
+    input  wire [287:0] progress,
+    input  wire [255:0] health,
+    input  wire [63:0] kind,
     input  wire [7:0]  elixir,
     input  wire [5:0]  selected_lane,
     input  wire [3:0]  selected_card,
     input  wire [3:0]  error_code,
+    input  wire [15:0] elapsed_ticks,
     output reg  [11:0] rgb
 );
     `include "royale_params.vh"
 
-    // Set to 1 after placing generated *_rom.v under rtl/sprites/ and wiring below.
-    localparam USE_SPRITES = 0;
+    localparam USE_SPRITES = 1;
     localparam SPRITE_W = 20;
     localparam SPRITE_H = 20;
 
@@ -39,6 +39,7 @@ module vga_bitchange (
             "7": glyph = 35'b11111_00001_00010_00100_01000_01000_01000;
             "8": glyph = 35'b01110_10001_10001_01110_10001_10001_01110;
             "9": glyph = 35'b01110_10001_10001_01111_00001_00001_01110;
+            ":": glyph = 35'b00000_00100_00100_00000_00100_00100_00000;
             "A": glyph = 35'b01110_10001_10001_11111_10001_10001_10001;
             "C": glyph = 35'b01111_10000_10000_10000_10000_10000_01111;
             "D": glyph = 35'b11110_10001_10001_10001_10001_10001_11110;
@@ -59,6 +60,17 @@ module vga_bitchange (
             "Y": glyph = 35'b10001_10001_01010_00100_00100_00100_00100;
             default: glyph = 35'd0;
         endcase
+    endfunction
+
+    function automatic [5:0] health_width(input [7:0] hp, input [1:0] card);
+        begin
+            case (card)
+                GIANT: health_width = hp;
+                ICE_GOLEM: health_width = (hp * 28) / 12;
+                KNIGHT: health_width = (hp * 28) / 16;
+                default: health_width = (hp * 28) / 12;
+            endcase
+        end
     endfunction
 
     function automatic ink(input integer px, py, left, top, scale, input [7:0] c);
@@ -97,15 +109,6 @@ module vga_bitchange (
     localparam [8*11-1:0] P2_TEXT = "P2 WINS    ";
     localparam [8*11-1:0] DRAW_TEXT = "DRAW       ";
 
-    // -------------------------------------------------------------------------
-    // SPRITE HOOK
-    // After generating ROMs with tools/ee354_optimized_sprite_script.py:
-    //   1) Drop giant_rom.v / ice_golem_rom.v / knight_rom.v / mini_pekka_rom.v
-    //      into rtl/sprites/ (modules named <basename>_rom).
-    //   2) Set USE_SPRITES = 1.
-    //   3) Uncomment the four ROM instances and the kind mux below.
-    // color_data == 12'h000 is treated as transparent.
-    // -------------------------------------------------------------------------
     reg [4:0] sprite_row;
     reg [4:0] sprite_col;
     reg [1:0] sprite_kind;
@@ -114,18 +117,16 @@ module vga_bitchange (
     wire [11:0] rom_ice;
     wire [11:0] rom_knight;
     wire [11:0] rom_pekka;
+    wire [11:0] grass_color;
+    wire [3:0] grass_row = vCount[3:0];
+    wire [3:0] grass_col = hCount[3:0];
     reg  [11:0] sprite_color;
 
-    assign rom_giant  = 12'h000;
-    assign rom_ice    = 12'h000;
-    assign rom_knight = 12'h000;
-    assign rom_pekka  = 12'h000;
-    /*
     giant_rom     u_giant (.clk(clk), .row(sprite_row), .col(sprite_col), .color_data(rom_giant));
     ice_golem_rom u_ice   (.clk(clk), .row(sprite_row), .col(sprite_col), .color_data(rom_ice));
     knight_rom    u_knight(.clk(clk), .row(sprite_row), .col(sprite_col), .color_data(rom_knight));
     mini_pekka_rom u_pekka(.clk(clk), .row(sprite_row), .col(sprite_col), .color_data(rom_pekka));
-    */
+    grass_tile_rom u_grass(.clk(clk), .row(grass_row), .col(grass_col), .color_data(grass_color));
 
     always @* begin
         case (sprite_kind)
@@ -139,6 +140,7 @@ module vga_bitchange (
     integer px, py, lane, slot, cx, cy, local_x, local_y;
     reg [3:0] text_index;
     reg [8:0] text_offset;
+    integer elapsed_seconds, elapsed_minutes, timer_seconds;
     reg [7:0] text_char;
 
     always @* begin
@@ -155,31 +157,38 @@ module vga_bitchange (
         sprite_col = 5'd0;
         sprite_kind = 2'd0;
         sprite_hit = 1'b0;
+        elapsed_seconds = elapsed_ticks / 60;
+        elapsed_minutes = elapsed_seconds / 60;
+        timer_seconds = elapsed_seconds % 60;
         rgb = 12'h112;
 
         if (px >= 80 && px < 560 && py >= 70 && py <= 430) begin
-            rgb = (py < 250) ? 12'h322 : 12'h223;
-            for (lane = 0; lane <= 5; lane = lane + 1)
-                if (px >= 80 + lane * 96 && px < 82 + lane * 96)
+            rgb = grass_color;
+            for (lane = 0; lane <= 4; lane = lane + 1)
+                if (px >= 80 + lane * 120 && px < 82 + lane * 120)
                     rgb = 12'h667;
             if (py == 250) rgb = 12'h889;
             if (py < 74) rgb = 12'hd45;
             if (py > 426) rgb = 12'h48e;
         end
 
-        for (lane = 0; lane < 5; lane = lane + 1) begin
-            if (selected_lane[(1)*3 +: 3] == lane && px >= 83 + lane * 96 && px < 175 + lane * 96 && py >= 62 && py < 68)
+        for (lane = 0; lane < 4; lane = lane + 1) begin
+            if (selected_lane[(1)*3 +: 3] == lane && px >= 83 + lane * 120 && px < 197 + lane * 120 && py >= 62 && py < 68)
                 rgb = 12'hfd4;
-            if (selected_lane[(0)*3 +: 3] == lane && px >= 83 + lane * 96 && px < 175 + lane * 96 && py >= 433 && py < 439)
+            if (selected_lane[(0)*3 +: 3] == lane && px >= 83 + lane * 120 && px < 197 + lane * 120 && py >= 433 && py < 439)
                 rgb = 12'hfd4;
-            if (ink(px, py, 124 + lane * 96, 80, 1, 8'd49 + lane) || ink(px, py, 124 + lane * 96, 413, 1, 8'd49 + lane))
+            if (ink(px, py, 137 + lane * 120, 80, 1, 8'd49 + lane) || ink(px, py, 137 + lane * 120, 413, 1, 8'd49 + lane))
                 rgb = 12'h99a;
         end
 
-        for (slot = 0; slot < 10; slot = slot + 1) begin
-            cx = 128 + (slot % 5) * 96 + ((slot < 5) ? -10 : 10);
-            cy = (slot < 5) ? 430 - (progress[(slot)*9 +: 9]) : 70 + (progress[(slot)*9 +: 9]);
+        for (slot = 0; slot < SLOTS; slot = slot + 1) begin
+            lane = (slot % SLOTS_PER_PLAYER) / CARDS;
+            cx = 140 + lane * 120 + (slot % CARDS) * 12 - 18 +
+                 ((slot < SLOTS_PER_PLAYER) ? -4 : 4);
+            cy = (slot < SLOTS_PER_PLAYER) ? 430 - (progress[(slot)*9 +: 9]) :
+                                             70 + (progress[(slot)*9 +: 9]);
             if (alive[slot]) begin
+                sprite_hit = 1'b0;
                 local_x = px - (cx - (SPRITE_W / 2));
                 local_y = py - (cy - (SPRITE_H / 2));
                 if (local_x >= 0 && local_x < SPRITE_W && local_y >= 0 && local_y < SPRITE_H) begin
@@ -189,15 +198,17 @@ module vga_bitchange (
                     sprite_kind = kind[(slot)*2 +: 2];
                 end
 
-                if (px >= cx - 9 && px <= cx + 9 && py >= cy - 9 && py <= cy + 9)
-                    rgb = (slot < 5) ? 12'h38f : 12'hf45;
+                if (!USE_SPRITES && px >= cx - 9 && px <= cx + 9 && py >= cy - 9 && py <= cy + 9)
+                    rgb = (slot < SLOTS_PER_PLAYER) ? 12'h38f : 12'hf45;
                 if (USE_SPRITES && sprite_hit && (sprite_color != 12'h000))
                     rgb = sprite_color;
-                if (ink(px, py, cx - 2, cy - 3, 1, card_letter(kind[(slot)*2 +: 2])))
+                if (USE_SPRITES && px >= cx - 7 && px < cx + 8 && py >= cy + 8 && py < cy + 10)
+                    rgb = (slot < SLOTS_PER_PLAYER) ? 12'h38f : 12'hf45;
+                if (!USE_SPRITES && ink(px, py, cx - 2, cy - 3, 1, card_letter(kind[(slot)*2 +: 2])))
                     rgb = 12'hfff;
                 if (px >= cx - 14 && px < cx + 14 && py >= cy - 14 && py < cy - 11) begin
                     rgb = 12'h333;
-                    if (px < cx - 14 + (health[(slot)*8 +: 8]))
+                    if (px < cx - 14 + health_width(health[(slot)*8 +: 8], kind[(slot)*2 +: 2]))
                         rgb = 12'h5e6;
                 end
             end
@@ -209,9 +220,13 @@ module vga_bitchange (
                 rgb = 12'hfff;
             if (px >= 126 && px < 226 && py >= cy && py < cy + 12)
                 rgb = (px < 126 + (elixir[(slot)*4 +: 4]) * 10) ? 12'hc5e : 12'h333;
-            if (ink(px, py, 244, cy, 2, card_letter(selected_card[(slot)*2 +: 2])))
+            if (elixir[(slot)*4 +: 4] == 10 && ink(px, py, 228, cy, 2, "1"))
+                rgb = 12'hfff;
+            if (ink(px, py, 240, cy, 2, 8'd48 + ((elixir[(slot)*4 +: 4] == 10) ? 0 : elixir[(slot)*4 +: 4])))
+                rgb = 12'hfff;
+            if (ink(px, py, 260, cy, 2, card_letter(selected_card[(slot)*2 +: 2])))
                 rgb = 12'hfd4;
-            if (error_code[(slot)*2 +: 2] != 0 && ink(px, py, 280, cy, 2, 8'd48 + (error_code[(slot)*2 +: 2])))
+            if (error_code[(slot)*2 +: 2] != 0 && ink(px, py, 292, cy, 2, 8'd48 + (error_code[(slot)*2 +: 2])))
                 rgb = 12'hf45;
         end
 
@@ -222,6 +237,13 @@ module vga_bitchange (
             if (ink(px, py, 254 + text_index * 12, 10, 2, text_char))
                 rgb = 12'hfff;
         end
+
+        if (ink(px, py, 570, 10, 1, 8'd48 + ((elapsed_minutes / 10) % 10)) ||
+            ink(px, py, 578, 10, 1, 8'd48 + (elapsed_minutes % 10)) ||
+            ink(px, py, 586, 10, 1, ":") ||
+            ink(px, py, 594, 10, 1, 8'd48 + (timer_seconds / 10)) ||
+            ink(px, py, 602, 10, 1, 8'd48 + (timer_seconds % 10)))
+            rgb = 12'hfff;
 
         if (state != PLAY && px >= 160 && px < 480 && py >= 212 && py < 286) begin
             rgb = 12'h112;
